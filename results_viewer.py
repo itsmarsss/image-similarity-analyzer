@@ -22,6 +22,17 @@ import os
 from typing import List, Dict, Optional, Tuple
 from PIL import Image
 import numpy as np
+import io
+import base64
+
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    from datetime import datetime
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    print("Warning: matplotlib not available. Timeline plots will be disabled.")
 
 
 def load_csv_results(filepath: str) -> pd.DataFrame:
@@ -151,6 +162,124 @@ def format_score_info(row: pd.Series) -> str:
         """
 
 
+def create_individual_score_plots(df: pd.DataFrame) -> Dict[str, Optional[str]]:
+    """Create separate timeline plots for each score type."""
+    plots = {}
+    
+    if not MATPLOTLIB_AVAILABLE or df.empty:
+        return plots
+    
+    # Filter for successful analyses only
+    successful_df = df[df['success'] == True].copy()
+    
+    if successful_df.empty:
+        return plots
+    
+    # If we have frame information, use it for x-axis, otherwise use pair index
+    if 'frame' in successful_df.columns:
+        x_values = successful_df['frame']
+        x_label = 'Frame Number'
+        title_suffix = 'by Frame'
+    else:
+        x_values = range(len(successful_df))
+        x_label = 'Pair Index'
+        title_suffix = 'by Pair'
+    
+    # Define score configurations
+    score_configs = {
+        'pixel': {
+            'data': successful_df['pixel_score'],
+            'color': '#2E86AB',
+            'title': f'Pixel Similarity Score {title_suffix}',
+            'description': 'Measures pixel-level differences (MSE-based)'
+        },
+        'embedding': {
+            'data': successful_df['embedding_score'],
+            'color': '#A23B72',
+            'title': f'Embedding Similarity Score {title_suffix}',
+            'description': 'Measures semantic similarity using AI embeddings'
+        },
+        'pose': {
+            'data': successful_df['pose_score'],
+            'color': '#F18F01',
+            'title': f'Pose Similarity Score {title_suffix}',
+            'description': 'Measures human pose and posture differences'
+        },
+        'combined': {
+            'data': successful_df['combined_score'],
+            'color': '#C73E1D',
+            'title': f'Combined Similarity Score {title_suffix}',
+            'description': 'Weighted combination of all similarity metrics'
+        }
+    }
+    
+    # Create individual plots
+    for score_name, config in score_configs.items():
+        plt.figure(figsize=(12, 6))
+        
+        # Plot the score line
+        plt.plot(x_values, config['data'], color=config['color'], linewidth=3, alpha=0.8)
+        plt.fill_between(x_values, config['data'], alpha=0.3, color=config['color'])
+        
+        # Add color-coded background regions for combined score
+        if score_name == 'combined':
+            plt.axhspan(0.0, 0.1, alpha=0.15, color='green', label='Very Similar')
+            plt.axhspan(0.1, 0.2, alpha=0.15, color='blue', label='Moderately Similar')
+            plt.axhspan(0.2, 0.3, alpha=0.15, color='orange', label='Somewhat Different')
+            plt.axhspan(0.3, 0.4, alpha=0.15, color='red', label='Very Different')
+            plt.axhspan(0.4, 1.0, alpha=0.15, color='gray', label='Extremely Different')
+            plt.legend(loc='upper right', fontsize=10)
+        
+        plt.title(config['title'], fontsize=16, fontweight='bold', pad=20)
+        plt.xlabel(x_label, fontsize=12)
+        plt.ylabel('Score (0=Similar, 1=Different)', fontsize=12)
+        plt.grid(True, alpha=0.3)
+        
+        # Set y-axis limits based on actual data range for better visualization
+        data_min = config['data'].min()
+        data_max = config['data'].max()
+        data_range = data_max - data_min
+        
+        # Add 10% padding above and below the data range
+        padding = max(0.05, data_range * 0.1)  # Minimum 0.05 padding
+        y_min = max(0, data_min - padding)  # Don't go below 0
+        y_max = min(1, data_max + padding)  # Don't go above 1
+        
+        # If data range is very small, ensure minimum visible range
+        if data_range < 0.1:
+            center = (data_min + data_max) / 2
+            y_min = max(0, center - 0.05)
+            y_max = min(1, center + 0.05)
+        
+        plt.ylim(y_min, y_max)
+        
+        # Add statistics
+        mean_score = config['data'].mean()
+        min_score = config['data'].min()
+        max_score = config['data'].max()
+        std_score = config['data'].std()
+        
+        stats_text = f"""Statistics:
+Mean: {mean_score:.3f}  |  Min: {min_score:.3f}  |  Max: {max_score:.3f}  |  Std: {std_score:.3f}
+{config['description']}"""
+        
+        plt.figtext(0.02, 0.02, stats_text, fontsize=11, 
+                    bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.9))
+        
+        plt.tight_layout()
+        
+        # Convert plot to base64 string
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight')
+        buffer.seek(0)
+        plot_data = base64.b64encode(buffer.getvalue()).decode()
+        plt.close()
+        
+        plots[score_name] = f"data:image/png;base64,{plot_data}"
+    
+    return plots
+
+
 def create_viewer_interface(df: pd.DataFrame):
     """Create the Gradio interface for viewing results."""
     
@@ -191,6 +320,37 @@ def create_viewer_interface(df: pd.DataFrame):
     with gr.Blocks(title="Image Similarity Results Viewer", theme=gr.themes.Soft()) as interface:
         gr.Markdown("# 🔍 Image Similarity Results Viewer")
         gr.Markdown(f"Loaded **{len(df)}** image pairs for analysis")
+        
+        # Add individual score plots
+        score_plots = create_individual_score_plots(df)
+        if score_plots:
+            with gr.Accordion("📈 Score Timeline Analysis", open=True):
+                # Create tabs for each score type
+                with gr.Tabs():
+                    if 'combined' in score_plots:
+                        with gr.Tab("🎯 Combined Score"):
+                            gr.HTML(f'<img src="{score_plots["combined"]}" style="width: 100%; max-width: 1200px; height: auto;">')
+                    
+                    if 'pixel' in score_plots:
+                        with gr.Tab("🖼️ Pixel Score"):
+                            gr.HTML(f'<img src="{score_plots["pixel"]}" style="width: 100%; max-width: 1200px; height: auto;">')
+                    
+                    if 'embedding' in score_plots:
+                        with gr.Tab("🧠 Embedding Score"):
+                            gr.HTML(f'<img src="{score_plots["embedding"]}" style="width: 100%; max-width: 1200px; height: auto;">')
+                    
+                    if 'pose' in score_plots:
+                        with gr.Tab("🤸 Pose Score"):
+                            gr.HTML(f'<img src="{score_plots["pose"]}" style="width: 100%; max-width: 1200px; height: auto;">')
+        elif not MATPLOTLIB_AVAILABLE:
+            with gr.Accordion("📈 Score Timeline Analysis", open=False):
+                gr.Markdown("⚠️ **Timeline plots require matplotlib.** Install with: `pip install matplotlib`")
+        else:
+            # Check if we have any successful analyses
+            successful_count = len(df[df['success'] == True]) if 'success' in df.columns else 0
+            if successful_count == 0:
+                with gr.Accordion("📈 Score Timeline Analysis", open=False):
+                    gr.Markdown("📊 **No analyzed results yet.** Run analysis first to see timeline plots.")
         
         # State to track current pair
         current_pair = gr.State(0)
