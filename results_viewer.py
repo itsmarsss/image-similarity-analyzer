@@ -1,244 +1,284 @@
 """
 results_viewer.py
 
-Interactive visualization tool for image similarity analysis results.
-Displays image pairs side by side with score breakdowns and allows navigation
-between pairs using a slider.
+Interactive web-based visualization tool for image similarity analysis results.
+Displays image pairs side by side with score breakdowns using Gradio interface.
 
 Usage:
     python results_viewer.py --results similarity_results_20231201_143000.csv
-    python results_viewer.py --results similarity_results_20231201_143000.txt
-    python results_viewer.py --results pair_batch_list.txt --format batch
+    python results_viewer.py --results pair_batch_list.csv --format batch
 
 Options:
-    --results, -r   Path to results file (CSV, TXT, or batch list)
-    --format, -f    File format: 'csv', 'txt', or 'batch' (auto-detected if not specified)
-    --width, -w     Window width (default: 1400)
-    --height        Window height (default: 800)
+    --results, -r   Path to results file (CSV or batch list)
+    --format, -f    File format: 'csv' or 'batch' (auto-detected if not specified)
+    --port, -p      Port for web interface (default: 7860)
+    --share         Create public shareable link
 """
 
-import cv2
+import gradio as gr
 import argparse
-import numpy as np
-import csv
+import pandas as pd
 import os
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
+from PIL import Image
+import numpy as np
 
 
-def load_csv_results(filepath: str) -> List[Dict]:
+def load_csv_results(filepath: str) -> pd.DataFrame:
     """Load results from CSV file."""
-    results = []
     try:
-        with open(filepath, 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row['success'].lower() == 'true':
-                    results.append({
-                        'input_path': row['input_path'],
-                        'output_path': row['output_path'],
-                        'pixel_score': float(row['pixel_score']),
-                        'embedding_score': float(row['embedding_score']),
-                        'pose_score': float(row['pose_score']),
-                        'combined_score': float(row['combined_score']),
-                        'success': True
-                    })
-                else:
-                    results.append({
-                        'input_path': row['input_path'],
-                        'output_path': row['output_path'],
-                        'error': row.get('error', 'Unknown error'),
-                        'success': False
-                    })
+        df = pd.read_csv(filepath)
+        # Ensure required columns exist
+        required_cols = ['input_path', 'output_path', 'success']
+        if not all(col in df.columns for col in required_cols):
+            raise ValueError(f"CSV must contain columns: {required_cols}")
+        return df
     except Exception as e:
         print(f"Error loading CSV file: {e}")
-        return []
-    return results
+        return pd.DataFrame()
 
 
-def load_batch_file(filepath: str) -> List[Dict]:
-    """Load pairs from batch file (for when results aren't computed yet)."""
-    results = []
+def load_batch_file(filepath: str) -> pd.DataFrame:
+    """Load pairs from batch CSV file (for when results aren't computed yet)."""
     try:
-        with open(filepath, 'r') as f:
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                    
-                parts = line.split(',')
-                if len(parts) != 2:
-                    continue
-                    
-                input_path, output_path = parts[0].strip(), parts[1].strip()
-                results.append({
-                    'input_path': input_path,
-                    'output_path': output_path,
-                    'pixel_score': None,
-                    'embedding_score': None,
-                    'pose_score': None,
-                    'combined_score': None,
-                    'success': None  # Indicates not computed
-                })
+        df = pd.read_csv(filepath)
+        # Add empty score columns for batch files
+        if 'pixel_score' not in df.columns:
+            df['pixel_score'] = None
+            df['embedding_score'] = None
+            df['pose_score'] = None
+            df['combined_score'] = None
+            df['success'] = None
+            df['error'] = None
+        return df
     except Exception as e:
         print(f"Error loading batch file: {e}")
-        return []
-    return results
-
-
-def load_txt_results(filepath: str) -> List[Dict]:
-    """Load results from text file."""
-    results = []
-    try:
-        with open(filepath, 'r') as f:
-            lines = f.readlines()
-            
-        current_result = None
-        for line in lines:
-            line = line.strip()
-            if line.startswith('Pair ') and ':' in line:
-                # Parse pair line: "Pair 001: input.png -> output.png"
-                if current_result:
-                    results.append(current_result)
-                
-                pair_info = line.split(':', 1)[1].strip()
-                if '->' in pair_info:
-                    input_path, output_path = pair_info.split('->', 1)
-                    current_result = {
-                        'input_path': input_path.strip(),
-                        'output_path': output_path.strip(),
-                        'success': True
-                    }
-            elif current_result and line.startswith('Pixel Score:'):
-                current_result['pixel_score'] = float(line.split(':')[1].strip())
-            elif current_result and line.startswith('Embedding Score:'):
-                current_result['embedding_score'] = float(line.split(':')[1].strip())
-            elif current_result and line.startswith('Pose Score:'):
-                current_result['pose_score'] = float(line.split(':')[1].strip())
-            elif current_result and line.startswith('Combined Score:'):
-                current_result['combined_score'] = float(line.split(':')[1].strip())
-            elif current_result and line.startswith('ERROR:'):
-                current_result['error'] = line.split(':', 1)[1].strip()
-                current_result['success'] = False
-        
-        if current_result:
-            results.append(current_result)
-            
-    except Exception as e:
-        print(f"Error loading text file: {e}")
-        return []
-    return results
+        return pd.DataFrame()
 
 
 def detect_format(filepath: str) -> str:
-    """Auto-detect file format based on extension and content."""
-    if filepath.endswith('.csv'):
-        return 'csv'
-    elif filepath.endswith('.txt'):
-        # Check if it's a batch file or results file
-        try:
-            with open(filepath, 'r') as f:
-                first_line = f.readline().strip()
-                if 'Image Similarity Analysis Results' in first_line:
-                    return 'txt'
-                else:
-                    return 'batch'
-        except:
-            return 'txt'
-    else:
-        return 'batch'
-
-
-def load_and_resize_image(path: str, target_height: int) -> Optional[np.ndarray]:
-    """Load and resize image to target height while maintaining aspect ratio."""
+    """Auto-detect file format based on content."""
     try:
-        img = cv2.imread(path)
-        if img is None:
-            return None
-        
-        h, w = img.shape[:2]
-        new_width = int(w * target_height / h)
-        resized = cv2.resize(img, (new_width, target_height))
-        return resized
+        df = pd.read_csv(filepath)
+        if 'pixel_score' in df.columns or 'success' in df.columns:
+            return 'csv'
+        else:
+            return 'batch'
+    except:
+        return 'csv'
+
+
+def load_image_safe(path: str) -> Optional[Image.Image]:
+    """Safely load an image file."""
+    try:
+        if os.path.exists(path):
+            return Image.open(path)
+        else:
+            # Create a placeholder image
+            img = Image.new('RGB', (300, 200), color='gray')
+            return img
     except Exception as e:
         print(f"Error loading image {path}: {e}")
-        return None
+        # Return a placeholder
+        img = Image.new('RGB', (300, 200), color='red')
+        return img
 
 
-def create_score_overlay(scores: Dict, width: int, height: int) -> np.ndarray:
-    """Create an overlay image with score information."""
-    overlay = np.zeros((height, width, 3), dtype=np.uint8)
-    overlay.fill(40)  # Dark background
-    
-    if scores['success'] is None:
-        # Not computed yet
-        texts = [
-            "Scores not computed",
-            "Run analysis first:",
-            "python main.py --batch <file>",
-            "--cohere-key <key>"
-        ]
-        y_start = 40
-        line_spacing = 25
-    elif scores['success']:
+def format_score_info(row: pd.Series) -> str:
+    """Format score information as HTML."""
+    if pd.isna(row.get('success')) or row.get('success') is None:
+        return """
+        <div style="padding: 15px; background-color: #f0f0f0; border-radius: 8px;">
+            <h3 style="color: #666; margin-top: 0;">⏳ Not Analyzed</h3>
+            <p>Scores not computed yet.<br>
+            Run analysis first:<br>
+            <code>python main.py --batch &lt;file&gt; --cohere-key &lt;key&gt;</code></p>
+        </div>
+        """
+    elif row['success']:
         # Successful analysis
-        texts = [
-            f"Pixel Score:     {scores['pixel_score']:.4f}",
-            f"Embedding Score: {scores['embedding_score']:.4f}",
-            f"Pose Score:      {scores['pose_score']:.4f}",
-            f"Combined Score:  {scores['combined_score']:.4f}",
-            "",
-            "Interpretation:",
-            f"  0.0-0.2: Very similar",
-            f"  0.2-0.4: Moderately similar", 
-            f"  0.4-0.6: Somewhat different",
-            f"  0.6-0.8: Very different",
-            f"  0.8-1.0: Extremely different"
-        ]
-        y_start = 25
-        line_spacing = 22
+        pixel = row['pixel_score']
+        embedding = row['embedding_score'] 
+        pose = row['pose_score']
+                combined = row['combined_score']
+        
+        # Determine overall similarity level
+        if combined <= 0.1:
+            level = "Very Similar"
+            color = "#28a745"
+        elif combined <= 0.2:
+            level = "Moderately Similar"
+            color = "#6f42c1"
+        elif combined <= 0.3:
+            level = "Somewhat Different"
+            color = "#fd7e14"
+        elif combined <= 0.4:
+            level = "Very Different"
+            color = "#dc3545"
+        else:
+            level = "Extremely Different"
+            color = "#6c757d"
+            
+        return f"""
+        <div style="padding: 15px; background-color: #f8f9fa; border-radius: 8px;">
+            <h3 style="color: {color}; margin-top: 0;">📊 Similarity Scores</h3>
+            <div style="margin: 10px 0; color: #000;">
+                <strong style="color: #000">Pixel Score:</strong> {pixel:.4f}<br>
+                <strong style="color: #000">Embedding Score:</strong> {embedding:.4f}<br>
+                <strong style="color: #000">Pose Score:</strong> {pose:.4f}<br>
+                <hr style="margin: 10px 0;">
+                <strong style="font-size: 1.1em; color: #000;">Combined Score: {combined:.4f}</strong><br>
+                <span style="color: {color}; font-weight: bold;">{level}</span>
+            </div>
+            <div style="font-size: 0.9em; color: #666; margin-top: 15px;">
+                <strong style="color: #000;">Interpretation:</strong><br>
+                0.0-0.1: Very similar<br>
+                0.1-0.2: Moderately similar<br>
+                0.2-0.3: Somewhat different<br>
+                0.3-0.4: Very different<br>
+                0.4-1.0: Extremely different
+            </div>
+        </div>
+        """
     else:
-        # Error
-        texts = [
-            "Analysis failed:",
-            f"Error: {scores.get('error', 'Unknown error')[:40]}..."
-        ]
-        y_start = 40
-        line_spacing = 25
-    
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.45  # Smaller font
-    thickness = 1      # Thinner for sharper text
-    
-    for i, text in enumerate(texts):
-        y = y_start + i * line_spacing
-        if y < height - 15:
-            # Add subtle shadow for better readability
-            cv2.putText(overlay, text, (11, y+1), font, font_scale, (0, 0, 0), thickness)
-            cv2.putText(overlay, text, (10, y), font, font_scale, (255, 255, 255), thickness)
-    
-    return overlay
+        # Error case
+        error_msg = row.get('error', 'Unknown error')
+        return f"""
+        <div style="padding: 15px; background-color: #f8d7da; border-radius: 8px; border: 1px solid #f5c6cb;">
+            <h3 style="color: #721c24; margin-top: 0;">❌ Analysis Failed</h3>
+            <p style="color: #721c24;"><strong>Error:</strong> {error_msg}</p>
+        </div>
+        """
 
 
-def on_mouse(event, x, y, flags, param):
-    global current_pair, total_pairs, image_area_width
+def create_viewer_interface(df: pd.DataFrame):
+    """Create the Gradio interface for viewing results."""
     
-    if event == cv2.EVENT_LBUTTONDOWN:
-        # Click navigation: left side = previous, right side = next
-        if x < image_area_width // 3:
-            # Left third - go to previous
-            current_pair = max(current_pair - 1, 0)
-        elif x > 2 * image_area_width // 3:
-            # Right third - go to next  
-            current_pair = min(current_pair + 1, total_pairs - 1)
+    def update_display(pair_index: int) -> Tuple[Image.Image, Image.Image, str, str]:
+        """Update the display for a given pair index."""
+        if df.empty or pair_index >= len(df):
+            placeholder = Image.new('RGB', (300, 200), color='gray')
+            return placeholder, placeholder, "No data", "No pairs loaded"
+        
+        row = df.iloc[pair_index]
+        
+        # Load images
+        input_img = load_image_safe(row['input_path'])
+        output_img = load_image_safe(row['output_path'])
+        
+        # Create header info
+        input_name = os.path.basename(row['input_path'])
+        output_name = os.path.basename(row['output_path'])
+        header = f"**Pair {pair_index + 1} of {len(df)}**\n\n**Input:** {input_name}\n\n**Output:** {output_name}"
+        
+        # Create score info
+        score_info = format_score_info(row)
+        
+        return input_img, output_img, header, score_info
+    
+    def next_pair(current_idx: int) -> int:
+        return min(current_idx + 1, len(df) - 1) if not df.empty else 0
+    
+    def prev_pair(current_idx: int) -> int:
+        return max(current_idx - 1, 0)
+    
+    def jump_to_pair(pair_num: int) -> int:
+        if df.empty:
+            return 0
+        return max(0, min(pair_num - 1, len(df) - 1))
+    
+    # Create Gradio interface
+    with gr.Blocks(title="Image Similarity Results Viewer", theme=gr.themes.Soft()) as interface:
+        gr.Markdown("# 🔍 Image Similarity Results Viewer")
+        gr.Markdown(f"Loaded **{len(df)}** image pairs for analysis")
+        
+        # State to track current pair
+        current_pair = gr.State(0)
+        
+        with gr.Row():
+            with gr.Column(scale=2):
+                # Navigation controls
+                with gr.Row():
+                    prev_btn = gr.Button("⬅️ Previous", variant="secondary")
+                    pair_input = gr.Number(label="Go to Pair", value=1, minimum=1, maximum=len(df) if not df.empty else 1, precision=0)
+                    next_btn = gr.Button("Next ➡️", variant="secondary")
+                
+                # Header info
+                header_info = gr.Markdown("", elem_id="header-info")
+                
+                # Images side by side
+                with gr.Row():
+                    input_image = gr.Image(label="Input Image", type="pil", height=400)
+                    output_image = gr.Image(label="Output Image", type="pil", height=400)
+            
+            with gr.Column(scale=1):
+                # Score panel
+                score_panel = gr.HTML(label="Similarity Analysis")
+        
+        # Event handlers
+        def on_pair_change(pair_idx):
+            img1, img2, header, scores = update_display(pair_idx)
+            return img1, img2, header, scores, pair_idx + 1
+        
+        def on_next(current_idx):
+            new_idx = next_pair(current_idx)
+            img1, img2, header, scores = update_display(new_idx)
+            return img1, img2, header, scores, new_idx, new_idx + 1
+        
+        def on_prev(current_idx):
+            new_idx = prev_pair(current_idx)
+            img1, img2, header, scores = update_display(new_idx)
+            return img1, img2, header, scores, new_idx, new_idx + 1
+        
+        def on_jump(pair_num, current_idx):
+            new_idx = jump_to_pair(pair_num)
+            img1, img2, header, scores = update_display(new_idx)
+            return img1, img2, header, scores, new_idx
+        
+        # Wire up events
+        next_btn.click(
+            on_next,
+            inputs=[current_pair],
+            outputs=[input_image, output_image, header_info, score_panel, current_pair, pair_input]
+        )
+        
+        prev_btn.click(
+            on_prev,
+            inputs=[current_pair],
+            outputs=[input_image, output_image, header_info, score_panel, current_pair, pair_input]
+        )
+        
+        pair_input.submit(
+            on_jump,
+            inputs=[pair_input, current_pair],
+            outputs=[input_image, output_image, header_info, score_panel, current_pair]
+        )
+        
+        # Initialize display
+        interface.load(
+            on_pair_change,
+            inputs=[current_pair],
+            outputs=[input_image, output_image, header_info, score_panel, pair_input]
+        )
+        
+        # Add keyboard shortcuts info
+        gr.Markdown("""
+        ### 🎮 Navigation Tips
+        - Use **Previous/Next** buttons or the **Go to Pair** number input
+        - Images are displayed at their original aspect ratio
+        - Scores are color-coded: 🟢 Similar → 🔴 Different
+        """)
+    
+    return interface
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Interactive Image Similarity Results Viewer')
-    parser.add_argument('-r', '--results', required=True, help='Path to results file')
-    parser.add_argument('-f', '--format', choices=['csv', 'txt', 'batch'], 
+    parser = argparse.ArgumentParser(description='Interactive Web-based Image Similarity Results Viewer')
+    parser.add_argument('-r', '--results', required=True, help='Path to results CSV file')
+    parser.add_argument('-f', '--format', choices=['csv', 'batch'], 
                        help='File format (auto-detected if not specified)')
-    parser.add_argument('-w', '--width', type=int, default=1400, help='Window width')
-    parser.add_argument('--height', type=int, default=800, help='Window height')
+    parser.add_argument('-p', '--port', type=int, default=7860, help='Port for web interface')
+    parser.add_argument('--share', action='store_true', help='Create public shareable link')
     args = parser.parse_args()
     
     # Detect format if not specified
@@ -247,185 +287,32 @@ def main():
     # Load results
     print(f"Loading results from {args.results} (format: {file_format})")
     if file_format == 'csv':
-        results = load_csv_results(args.results)
-    elif file_format == 'txt':
-        results = load_txt_results(args.results)
+        df = load_csv_results(args.results)
     elif file_format == 'batch':
-        results = load_batch_file(args.results)
+        df = load_batch_file(args.results)
     else:
         print(f"Unknown format: {file_format}")
         return
     
-    if not results:
+    if df.empty:
         print("No results found or failed to load file!")
         return
     
-    print(f"Loaded {len(results)} pairs")
+    print(f"Loaded {len(df)} pairs")
     
-    # Setup window
-    window_name = 'Image Similarity Results Viewer'
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(window_name, args.width, args.height)
+    # Create and launch interface
+    interface = create_viewer_interface(df)
     
-    global current_pair, total_pairs, image_area_width
-    current_pair = 0
-    total_pairs = len(results)
+    print(f"\n🚀 Starting web interface...")
+    print(f"📱 Open your browser to view the results")
+    if args.share:
+        print(f"🌐 Public link will be generated for sharing")
     
-    # Calculate layout
-    score_panel_width = 350
-    image_area_width = args.width - score_panel_width
-    target_img_height = args.height - 80  # Leave space for info
-    
-    # Set mouse callback for click navigation
-    cv2.setMouseCallback(window_name, on_mouse)
-    
-    print(f"\nNavigation Controls:")
-    print(f"  Left/Right arrows: Previous/Next pair")
-    print(f"  Up/Down arrows: Jump +/-5 pairs")
-    print(f"  Click left/right sides: Previous/Next pair")
-    print(f"  Space/Backspace: Next/Previous pair")
-    print(f"  Number keys (1-9,0): Jump to specific pair")
-    print(f"  Home/End: First/Last pair")
-    print(f"  'q' or Escape: Quit")
-    print(f"  's': Print current pair info")
-    print("=" * 50)
-    
-    while True:
-        result = results[current_pair]
-        
-        # Load images
-        img1 = load_and_resize_image(result['input_path'], target_img_height)
-        img2 = load_and_resize_image(result['output_path'], target_img_height)
-        
-        if img1 is None:
-            img1 = np.zeros((target_img_height, 300, 3), dtype=np.uint8)
-            cv2.putText(img1, "Image not found", (10, target_img_height//2), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        
-        if img2 is None:
-            img2 = np.zeros((target_img_height, 300, 3), dtype=np.uint8)
-            cv2.putText(img2, "Image not found", (10, target_img_height//2), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        
-        # Ensure images have same height
-        h = min(img1.shape[0], img2.shape[0])
-        img1 = cv2.resize(img1, (int(img1.shape[1] * h / img1.shape[0]), h))
-        img2 = cv2.resize(img2, (int(img2.shape[1] * h / img2.shape[0]), h))
-        
-        # Create side-by-side comparison
-        combined_images = np.hstack([img1, img2])
-        
-        # Scale to fit available width
-        if combined_images.shape[1] > image_area_width:
-            scale = image_area_width / combined_images.shape[1]
-            new_width = int(combined_images.shape[1] * scale)
-            new_height = int(combined_images.shape[0] * scale)
-            combined_images = cv2.resize(combined_images, (new_width, new_height))
-        
-        # Add subtle click zone indicators
-        img_height, img_width = combined_images.shape[:2]
-        
-        # Left click zone (previous) - only if not first pair
-        if current_pair > 0:
-            left_zone_width = img_width // 3
-            overlay = combined_images.copy()
-            cv2.rectangle(overlay, (0, 0), (left_zone_width, img_height), (100, 100, 255), -1)
-            combined_images = cv2.addWeighted(combined_images, 0.95, overlay, 0.05, 0)
-            
-            # Add "PREV" text
-            cv2.putText(combined_images, "PREV", (10, img_height // 2), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 255), 2)
-        
-        # Right click zone (next) - only if not last pair  
-        if current_pair < len(results) - 1:
-            right_zone_start = 2 * img_width // 3
-            overlay = combined_images.copy()
-            cv2.rectangle(overlay, (right_zone_start, 0), (img_width, img_height), (100, 255, 100), -1)
-            combined_images = cv2.addWeighted(combined_images, 0.95, overlay, 0.05, 0)
-            
-            # Add "NEXT" text
-            cv2.putText(combined_images, "NEXT", (img_width - 70, img_height // 2), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 255, 200), 2)
-        
-        # Create score panel
-        score_panel = create_score_overlay(result, score_panel_width, combined_images.shape[0])
-        
-        # Create score panel to match image height
-        score_panel = create_score_overlay(result, score_panel_width, combined_images.shape[0])
-        
-        # Combine images and score panel horizontally
-        main_content = np.hstack([combined_images, score_panel])
-        
-        # Create header at the top
-        header_height = 70
-        header = np.zeros((header_height, main_content.shape[1], 3), dtype=np.uint8)
-        header.fill(30)
-        
-        # Add header text
-        pair_text = f"Pair {current_pair + 1}/{len(results)}"
-        input_name = os.path.basename(result['input_path'])
-        output_name = os.path.basename(result['output_path'])
-        files_text = f"Input: {input_name} | Output: {output_name}"
-        
-        # Main title with shadow
-        cv2.putText(header, pair_text, (11, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
-        cv2.putText(header, pair_text, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
-        
-        # File names with shadow  
-        cv2.putText(header, files_text, (11, 51), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 1)
-        cv2.putText(header, files_text, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
-        
-        # Navigation hints on the right side of header
-        nav_text = "< > Arrows | Click sides"
-        text_size = cv2.getTextSize(nav_text, cv2.FONT_HERSHEY_SIMPLEX, 0.35, 1)[0]
-        nav_x = header.shape[1] - text_size[0] - 10
-        cv2.putText(header, nav_text, (nav_x + 1, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
-        cv2.putText(header, nav_text, (nav_x, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (150, 150, 150), 1)
-        
-        # Stack header on top of main content
-        final_display = np.vstack([header, main_content])
-        
-        cv2.imshow(window_name, final_display)
-        key = cv2.waitKey(30) & 0xFF
-        
-        if key == ord('q') or key == 27:  # 'q' or Escape
-            break
-        elif key == 81 or key == 2:  # Left arrow key  
-            current_pair = max(current_pair - 1, 0)
-        elif key == 83 or key == 3:  # Right arrow key
-            current_pair = min(current_pair + 1, len(results) - 1)
-        elif key == 82:  # Up arrow - jump back 5
-            current_pair = max(current_pair - 5, 0)
-        elif key == 84:  # Down arrow - jump forward 5
-            current_pair = min(current_pair + 5, len(results) - 1)
-        elif key == ord(' '):  # Spacebar - next pair
-            current_pair = min(current_pair + 1, len(results) - 1)
-        elif key == 8:  # Backspace - previous pair
-            current_pair = max(current_pair - 1, 0)
-        elif key >= ord('1') and key <= ord('9'):  # Number keys 1-9
-            target = int(chr(key)) - 1
-            if target < len(results):
-                current_pair = target
-        elif key == ord('0'):  # 0 key - go to pair 10 (if exists)
-            if len(results) > 9:
-                current_pair = 9
-        elif key == 71:  # Home key - first pair
-            current_pair = 0
-        elif key == 79:  # End key - last pair
-            current_pair = len(results) - 1
-        elif key == ord('s'):
-            print(f"\nPair {current_pair + 1} Info:")
-            print(f"  Input:  {result['input_path']}")
-            print(f"  Output: {result['output_path']}")
-            if result['success']:
-                print(f"  Pixel Score:     {result['pixel_score']:.4f}")
-                print(f"  Embedding Score: {result['embedding_score']:.4f}")
-                print(f"  Pose Score:      {result['pose_score']:.4f}")
-                print(f"  Combined Score:  {result['combined_score']:.4f}")
-            elif result['success'] is False:
-                print(f"  Error: {result.get('error', 'Unknown error')}")
-            else:
-                print(f"  Status: Not analyzed yet")
-    
-    cv2.destroyAllWindows()
+    interface.launch(
+        server_port=args.port,
+        share=args.share,
+        inbrowser=True
+    )
 
 
 if __name__ == '__main__':
