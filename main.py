@@ -9,7 +9,7 @@ Features:
 - Single pair analysis
 - Batch processing from CSV files
 - Directory scanning for image pairs
-- Weighted scoring system optimized for face-swap analysis
+- Weighted scoring system optimized for body-swap analysis
 - CSV output with detailed statistics
 
 Usage:
@@ -20,9 +20,9 @@ Usage:
     python main.py --batch pairs.csv --cohere-key YOUR_KEY
     
     # Directory scanning
-    python main.py --directory ./images --prefix face_swap --cohere-key YOUR_KEY
+    python main.py --directory ./images --prefix body_swap --cohere-key YOUR_KEY
 
-Default weights [1.0, 2.5, 1.5] are optimized for face-swap analysis.
+Default weights [1.0, 2.5, 1.5] are optimized for body-swap analysis.
 """
 
 import argparse
@@ -212,7 +212,7 @@ def main():
     # Common options
     p.add_argument('-w', '--weights', nargs=3, type=float,
                    default=[1.0, 2.5, 1.5],
-                   help='Weights: pixel, embedding, pose (default: face-swap optimized)')
+                   help='Weights: pixel, embedding, pose (default: body-swap optimized)')
     p.add_argument('--cohere-key', required=True, help='Cohere API key')
     
     # Output options

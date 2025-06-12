@@ -266,7 +266,7 @@ def create_viewer_interface(df: pd.DataFrame):
         ### 🎮 Navigation Tips
         - Use **Previous/Next** buttons or the **Go to Pair** number input
         - Images are displayed at their original aspect ratio
-        - Scores are color-coded: 🟢 Similar → 🔴 Different
+        - Scores are color-coded: 🟢 Similar → ⚫ Different
         """)
     
     return interface

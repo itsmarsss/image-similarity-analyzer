@@ -1,6 +1,6 @@
 # Image Similarity Analysis Tool
 
-A comprehensive image comparison tool that analyzes similarity between original and processed images using multiple computer vision and AI techniques. This tool is particularly useful for evaluating self-swap, face-swap, or other image transformation results.
+A comprehensive image comparison tool that analyzes similarity between original and processed images using multiple computer vision and AI techniques. This tool is particularly useful for evaluating self-swap, body-swap, or other image transformation results.
 
 ## 🎯 Overview
 
@@ -14,7 +14,7 @@ The scores are combined into a weighted composite score for comprehensive image 
 
 ## 📄 Project Background
 
-This tool was developed as part of a technical report analyzing image similarity metrics for evaluating AI-generated content, particularly face-swap and self-swap transformations. The project demonstrates the effectiveness of combining multiple computer vision approaches (pixel-level, semantic, and pose-based analysis) to provide comprehensive image comparison capabilities.
+This tool was developed as part of a technical report analyzing image similarity metrics for evaluating AI-generated content, particularly body-swap and self-swap transformations. The project demonstrates the effectiveness of combining multiple computer vision approaches (pixel-level, semantic, and pose-based analysis) to provide comprehensive image comparison capabilities.
 
 ## 📊 Scoring System
 
@@ -23,7 +23,7 @@ All scores are normalized to a **[0, 1]** range where:
 -   **0.0** = Perfect similarity (identical)
 -   **1.0** = Maximum difference
 
-### Score Interpretations (Face-Swap Optimized)
+### Score Interpretations (Body-Swap Optimized)
 
 | Score Range | Interpretation      | Visual Indicator |
 | ----------- | ------------------- | ---------------- |
@@ -33,7 +33,7 @@ All scores are normalized to a **[0, 1]** range where:
 | 0.3 - 0.4   | Very different      | 🔴 Red           |
 | 0.4 - 1.0   | Extremely different | ⚫ Gray          |
 
-_These ranges are optimized for face-swap analysis with default weights [1.0, 2.5, 1.5]_
+_These ranges are optimized for body-swap analysis with default weights [1.0, 2.5, 1.5]_
 
 ## 🚀 Quick Start
 
@@ -79,7 +79,7 @@ python main.py -i input.png -o output.png --cohere-key YOUR_API_KEY
 python main.py --batch pairs.csv --cohere-key YOUR_API_KEY
 
 # Process all pairs in directory with specific prefix
-python main.py --directory ./images --prefix face_swap --cohere-key YOUR_API_KEY
+python main.py --directory ./images --prefix body_swap --cohere-key YOUR_API_KEY
 ```
 
 #### Interactive Results Viewer
@@ -136,15 +136,15 @@ python results_viewer.py -r pairs.csv --format batch
 ### 1. Extract Image Pairs from Videos
 
 ```bash
-python helper_select_and_crop.py -i original.mp4 -o processed.mp4 --prefix face_swap
-# Creates: face_swap_input_001.png, face_swap_output_001.png, etc.
-# Generates: face_swap_batch_list.csv
+python helper_select_and_crop.py -i original.mp4 -o processed.mp4 --prefix body_swap
+# Creates: body_swap_input_001.png, body_swap_output_001.png, etc.
+# Generates: body_swap_batch_list.csv
 ```
 
 ### 2. Analyze Similarity
 
 ```bash
-python main.py --batch face_swap_batch_list.csv --cohere-key YOUR_KEY
+python main.py --batch body_swap_batch_list.csv --cohere-key YOUR_KEY
 # Creates: similarity_results_TIMESTAMP.csv
 ```
 
@@ -214,7 +214,7 @@ The `helper_select_and_crop.py` tool now supports extracting multiple image pair
 **Usage:**
 
 ```bash
-python helper_select_and_crop.py -i input.mp4 -o output.mp4 --prefix face_swap
+python helper_select_and_crop.py -i input.mp4 -o output.mp4 --prefix body_swap
 ```
 
 **Controls:**
@@ -228,8 +228,8 @@ python helper_select_and_crop.py -i input.mp4 -o output.mp4 --prefix face_swap
 
 **Output:**
 
--   Individual image pairs: `face_swap_input_001.png`, `face_swap_output_001.png`, etc.
--   Batch CSV file: `face_swap_batch_list.csv`
+-   Individual image pairs: `body_swap_input_001.png`, `body_swap_output_001.png`, etc.
+-   Batch CSV file: `body_swap_batch_list.csv`
 
 ## 🖥️ Interactive Results Viewer
 
@@ -304,15 +304,15 @@ Using weights: Pixel=1.0, Embedding=2.5, Pose=1.5
 ### Batch Processing
 
 ```bash
-$ python main.py --batch face_swap_batch_list.csv --cohere-key YOUR_KEY
+$ python main.py --batch body_swap_batch_list.csv --cohere-key YOUR_KEY
 
-Loaded 5 pairs from batch CSV: face_swap_batch_list.csv
+Loaded 5 pairs from batch CSV: body_swap_batch_list.csv
 Using weights: Pixel=1.0, Embedding=2.5, Pose=1.5
 Processing 5 pairs...
 
-[1/5] Processing: face_swap_input_001.png -> face_swap_output_001.png
+[1/5] Processing: body_swap_input_001.png -> body_swap_output_001.png
   ✓ Combined Score: 0.2156
-[2/5] Processing: face_swap_input_002.png -> face_swap_output_002.png
+[2/5] Processing: body_swap_input_002.png -> body_swap_output_002.png
   ✓ Combined Score: 0.1834
 ...
 
@@ -370,7 +370,7 @@ pyenv install --force 3.11.10
 
 Based on extensive testing, here are optimal weight configurations for different use cases:
 
-#### **Face-Swap/Self-Swap Analysis** ⭐ _Default Configuration_
+#### **Body-Swap/Self-Swap Analysis** ⭐ _Default Configuration_
 
 ```bash
 python main.py --batch pairs.csv --cohere-key KEY -w 1.0 2.5 1.5
@@ -422,7 +422,7 @@ python main.py --batch pairs.csv --cohere-key KEY -w 0.5 1.5 2.0
 
 | Use Case               | Pixel Weight | Embedding Weight | Pose Weight | Best For                       |
 | ---------------------- | ------------ | ---------------- | ----------- | ------------------------------ |
-| **Face-Swap Analysis** | 1.0          | **2.5**          | 1.5         | Identity preservation, realism |
+| **Body-Swap Analysis** | 1.0          | **2.5**          | 1.5         | Identity preservation, realism |
 | **General Quality**    | 1.5          | **2.0**          | 0.5         | Overall image assessment       |
 | **Technical Testing**  | **2.0**      | 1.0              | 0.0         | Compression, artifacts         |
 | **Pose Analysis**      | 0.5          | 1.5              | **2.0**     | Movement, gesture accuracy     |

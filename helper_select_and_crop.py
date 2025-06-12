@@ -15,7 +15,7 @@ Features:
 - Session summary with extraction statistics
 
 Usage:
-    python helper_select_and_crop.py --input input.mp4 --output output.mp4 --prefix face_swap
+    python helper_select_and_crop.py --input input.mp4 --output output.mp4 --prefix body_swap
 
 Options:
     --input,  -i   Path to original input video
