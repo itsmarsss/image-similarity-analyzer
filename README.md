@@ -23,15 +23,17 @@ All scores are normalized to a **[0, 1]** range where:
 -   **0.0** = Perfect similarity (identical)
 -   **1.0** = Maximum difference
 
-### Score Interpretations
+### Score Interpretations (Face-Swap Optimized)
 
-| Score Range | Interpretation      |
-| ----------- | ------------------- |
-| 0.0 - 0.2   | Very similar        |
-| 0.2 - 0.4   | Moderately similar  |
-| 0.4 - 0.6   | Somewhat different  |
-| 0.6 - 0.8   | Very different      |
-| 0.8 - 1.0   | Extremely different |
+| Score Range | Interpretation      | Visual Indicator |
+| ----------- | ------------------- | ---------------- |
+| 0.0 - 0.1   | Very similar        | 🟢 Green         |
+| 0.1 - 0.2   | Moderately similar  | 🟣 Purple        |
+| 0.2 - 0.3   | Somewhat different  | 🟠 Orange        |
+| 0.3 - 0.4   | Very different      | 🔴 Red           |
+| 0.4 - 1.0   | Extremely different | ⚫ Gray          |
+
+_These ranges are optimized for face-swap analysis with default weights [1.0, 2.5, 1.5]_
 
 ## 🚀 Quick Start
 
@@ -46,6 +48,7 @@ All scores are normalized to a **[0, 1]** range where:
 
 ```bash
 git clone https://github.com/itsmarsss/image-similarity-analyzer.git
+cd image-similarity-analyzer
 ```
 
 2. **Create virtual environment**
@@ -63,27 +66,94 @@ pip install -r requirements.txt
 
 ### Basic Usage
 
+#### Single Image Pair Analysis
+
 ```bash
 python main.py -i input.png -o output.png --cohere-key YOUR_API_KEY
 ```
 
-### Advanced Usage
+#### Batch Processing
 
 ```bash
-# Custom weights for different metrics
-python main.py -i input.png -o output.png --cohere-key YOUR_API_KEY -w 2.0 1.0 0.5
+# Process multiple pairs from CSV file
+python main.py --batch pairs.csv --cohere-key YOUR_API_KEY
 
-# This gives more weight to pixel differences, normal weight to embeddings, less to pose
+# Process all pairs in directory with specific prefix
+python main.py --directory ./images --prefix face_swap --cohere-key YOUR_API_KEY
+```
+
+#### Interactive Results Viewer
+
+```bash
+# Launch web-based viewer for results
+python results_viewer.py -r similarity_results_20231201_143000.csv
+
+# View batch file before analysis
+python results_viewer.py -r pairs.csv --format batch
 ```
 
 ## 📋 Command Line Arguments
 
-| Argument        | Required | Description                                                           |
-| --------------- | -------- | --------------------------------------------------------------------- |
-| `-i, --input`   | ✅       | Path to the original image                                            |
-| `-o, --output`  | ✅       | Path to the processed/swapped image                                   |
-| `--cohere-key`  | ✅       | Your Cohere API key                                                   |
-| `-w, --weights` | ❌       | Three weights for [pixel, embedding, pose] (default: [1.0, 1.0, 1.0]) |
+### Main Analysis Tool (`main.py`)
+
+| Argument             | Required | Description                                                           |
+| -------------------- | -------- | --------------------------------------------------------------------- |
+| **Single Pair Mode** |          |                                                                       |
+| `-i, --input`        | ✅\*     | Path to the original image                                            |
+| `-o, --output`       | ✅\*     | Path to the processed/swapped image                                   |
+| **Batch Processing** |          |                                                                       |
+| `--batch`            | ✅\*     | Path to batch CSV file with input_path,output_path columns            |
+| `--directory`        | ✅\*     | Directory containing image pairs                                      |
+| `--prefix`           | ❌       | Filename prefix for directory mode (default: pair)                    |
+| **Common Options**   |          |                                                                       |
+| `--cohere-key`       | ✅       | Your Cohere API key                                                   |
+| `-w, --weights`      | ❌       | Three weights for [pixel, embedding, pose] (default: [1.0, 2.5, 1.5]) |
+| `--output-csv`       | ❌       | Save results to specified CSV file                                    |
+| `-v, --verbose`      | ❌       | Verbose output for each pair                                          |
+
+\*One mode required: single pair, batch, or directory
+
+### Results Viewer (`results_viewer.py`)
+
+| Argument        | Required | Description                                   |
+| --------------- | -------- | --------------------------------------------- |
+| `-r, --results` | ✅       | Path to results CSV file or batch file        |
+| `-f, --format`  | ❌       | File format: 'csv' or 'batch' (auto-detected) |
+| `-p, --port`    | ❌       | Port for web interface (default: 7860)        |
+| `--share`       | ❌       | Create public shareable link                  |
+
+### Helper Tool (`helper_select_and_crop.py`)
+
+| Argument       | Required | Description                          |
+| -------------- | -------- | ------------------------------------ |
+| `-i, --input`  | ✅       | Path to input video                  |
+| `-o, --output` | ✅       | Path to output video                 |
+| `-w, --width`  | ❌       | Display window width (default: 1200) |
+| `-p, --prefix` | ❌       | Filename prefix (default: pair)      |
+
+## 🔄 Complete Workflow
+
+### 1. Extract Image Pairs from Videos
+
+```bash
+python helper_select_and_crop.py -i original.mp4 -o processed.mp4 --prefix face_swap
+# Creates: face_swap_input_001.png, face_swap_output_001.png, etc.
+# Generates: face_swap_batch_list.csv
+```
+
+### 2. Analyze Similarity
+
+```bash
+python main.py --batch face_swap_batch_list.csv --cohere-key YOUR_KEY
+# Creates: similarity_results_TIMESTAMP.csv
+```
+
+### 3. View Results Interactively
+
+```bash
+python results_viewer.py -r similarity_results_TIMESTAMP.csv
+# Opens web interface at http://localhost:7860
+```
 
 ## 📖 Detailed Method Descriptions
 
@@ -96,7 +166,7 @@ python main.py -i input.png -o output.png --cohere-key YOUR_API_KEY -w 2.0 1.0 0
 ### 2. Embedding Difference Score
 
 -   **Method**: Cohere's multimodal embeddings + cosine similarity
--   **Model**: `embed-v4.0`
+-   **Model**: `embed-v4.0` (Cohere v2 API)
 -   **Normalization**: `(1 - cosine_similarity) / 2`
 -   **Best for**: Semantic similarity, understanding content changes
 
@@ -107,74 +177,99 @@ python main.py -i input.png -o output.png --cohere-key YOUR_API_KEY -w 2.0 1.0 0
 -   **Special Cases**:
     -   Both images no pose detected: `0.5` (neutral)
     -   One has pose, other doesn't: `1.0` (maximum difference)
-    -   Both have poses: Calculated similarity
+    -   Both have poses: Calculated similarity based on landmark distances
 -   **Best for**: Human pose and posture analysis
 
 ## 📁 Project Structure
 
 ```
 .
-├── main.py                    # Main application entry point
-├── requirements.txt           # Python dependencies
-├── methods/                   # Analysis methods
-│   ├── method_pixel_diff.py   # Pixel-based comparison
-│   ├── method_embedding.py    # AI embedding comparison
-│   ├── method_pose.py         # Pose detection comparison
+├── main.py                      # Main analysis tool with batch processing
+├── results_viewer.py            # Web-based results viewer (Gradio)
+├── helper_select_and_crop.py    # Video frame extraction tool
+├── requirements.txt             # Python dependencies
+├── methods/                     # Analysis methods
+│   ├── method_pixel_diff.py     # Pixel-based comparison
+│   ├── method_embedding.py      # AI embedding comparison
+│   ├── method_pose.py           # Pose detection comparison
 │   └── method_combine_scores.py # Score combination logic
-├── input.png                  # Sample input image
-├── output.png                 # Sample output image
-└── README.md                  # This file
+└── README.md                    # This documentation
 ```
 
 ## 🎬 Video Frame Selection Helper
 
-For video analysis workflows, this project includes a helpful utility script:
+### Multi-Crop Tool Features
 
-### `helper_select_and_crop.py`
+The `helper_select_and_crop.py` tool now supports extracting multiple image pairs from video sequences:
 
-This interactive tool helps you extract specific frames and regions from video pairs:
-
-**Features:**
+**Enhanced Features:**
 
 -   Load two videos side-by-side (e.g., original vs. processed)
--   Navigate through frames with a trackbar
--   Select regions of interest (ROI) by drawing rectangles
--   Export cropped frames as `input.png` and `output.png`
+-   Navigate through frames with trackbar and keyboard shortcuts
+-   Select multiple regions of interest (ROI) per session
+-   Export numbered pairs: `prefix_input_001.png`, `prefix_output_001.png`, etc.
+-   Generate CSV batch file automatically for analysis
+-   Session summary with all extracted pairs
 
 **Usage:**
 
 ```bash
-python helper_select_and_crop.py -i input.mp4 -o output.mp4 --width 1280
+python helper_select_and_crop.py -i input.mp4 -o output.mp4 --prefix face_swap
 ```
 
 **Controls:**
 
 -   **Trackbar**: Navigate through video frames
 -   **'s' key**: Select ROI (opens selection tool)
--   **'q' key**: Quit without saving
+-   **'n' key**: Next frame
+-   **'b' key**: Previous frame
+-   **'r' key**: Reset to frame 0
+-   **'q' key**: Quit and show summary
 
-**Workflow Example:**
+**Output:**
+
+-   Individual image pairs: `face_swap_input_001.png`, `face_swap_output_001.png`, etc.
+-   Batch CSV file: `face_swap_batch_list.csv`
+
+## 🖥️ Interactive Results Viewer
+
+The new **Gradio-based web interface** provides a modern, user-friendly way to review analysis results:
+
+### Features
+
+-   **Web-based interface** - Opens automatically in your browser
+-   **Side-by-side image comparison** with proper scaling
+-   **Color-coded score panels** with detailed breakdowns
+-   **Navigation controls** - Previous/Next buttons and direct pair jumping
+-   **Status-aware display** - Handles analyzed, unanalyzed, and failed cases
+-   **Responsive design** - Works on desktop, tablet, and mobile
+-   **Shareable links** - Optional public sharing capability
+
+### Usage Examples
 
 ```bash
-# Step 1: Extract frames from videos
-python helper_select_and_crop.py -i original_video.mp4 -o processed_video.mp4
+# Basic viewer
+python results_viewer.py -r results.csv
 
-# Step 2: Analyze the extracted images
-python main.py -i input.png -o output.png --cohere-key YOUR_KEY
+# Custom port
+python results_viewer.py -r results.csv -p 8080
+
+# Create shareable public link
+python results_viewer.py -r results.csv --share
+
+# View batch file before analysis
+python results_viewer.py -r batch_list.csv --format batch
 ```
-
-This tool is particularly useful for:
-
--   Video face-swap analysis
--   Comparing specific moments in video sequences
--   Creating matched image pairs from video content
 
 ## 🔧 Dependencies
 
 -   **numpy** - Numerical computations
--   **opencv-python** - Image processing
--   **cohere** - AI embeddings API
+-   **opencv-python** - Image processing and video handling
+-   **cohere** - AI embeddings API (v2)
 -   **mediapipe** - Pose detection
+-   **pandas** - Data handling for batch processing
+-   **gradio** - Web interface for results viewer
+-   **Pillow** - Image handling for viewer
 
 ## 🔑 API Key Setup
 
@@ -186,22 +281,53 @@ This tool is particularly useful for:
 
 ```bash
 export COHERE_API_KEY="your_key_here"
-python main.py -i input.png -o output.png --cohere-key $COHERE_API_KEY
+python main.py --batch pairs.csv --cohere-key $COHERE_API_KEY
 ```
 
 ## 📊 Example Output
 
+### Single Pair Analysis
+
 ```bash
 $ python main.py -i input.png -o output.png --cohere-key YOUR_KEY
 
-Pose detection: Swapped has pose, original doesn't
-Pixel Score:     0.0771
-Embedding Score: 0.1496
-Pose Score:      1.0000
-Combined Score:  1.2267
+Processing single pair: input.png -> output.png
+Using weights: Pixel=1.0, Embedding=2.5, Pose=1.5
+
+[1/1] Processing: input.png -> output.png
+  Pixel Score:     0.0771
+  Embedding Score: 0.1496
+  Pose Score:      1.0000
+  Combined Score:  0.4267
 ```
 
-**Interpretation**: The images show moderate pixel similarity, good semantic similarity, but maximum pose difference (one has detectable human pose, the other doesn't).
+### Batch Processing
+
+```bash
+$ python main.py --batch face_swap_batch_list.csv --cohere-key YOUR_KEY
+
+Loaded 5 pairs from batch CSV: face_swap_batch_list.csv
+Using weights: Pixel=1.0, Embedding=2.5, Pose=1.5
+Processing 5 pairs...
+
+[1/5] Processing: face_swap_input_001.png -> face_swap_output_001.png
+  ✓ Combined Score: 0.2156
+[2/5] Processing: face_swap_input_002.png -> face_swap_output_002.png
+  ✓ Combined Score: 0.1834
+...
+
+Results saved to: similarity_results_20231201_143000.csv
+
+============================================================
+BATCH PROCESSING SUMMARY
+============================================================
+Total pairs processed: 5
+Successful: 5
+Failed: 0
+
+STATISTICS (successful pairs):
+  Combined Score  - Mean: 0.2145, Min: 0.1834, Max: 0.2567
+```
 
 ## 🛠️ Troubleshooting
 
@@ -229,34 +355,25 @@ pyenv install --force 3.11.10
 
 **4. Memory issues with large images**
 
--   Resize images before processing
--   Consider processing in batches for multiple images
+-   Images are automatically resized for processing
+-   Consider reducing batch sizes for very large datasets
+
+**5. Gradio viewer not opening**
+
+-   Check if port 7860 is available
+-   Try a different port: `python results_viewer.py -r results.csv -p 8080`
+-   Ensure gradio is installed: `pip install gradio`
 
 ## 🎛️ Customization
-
-### Adjusting Weights
-
-The weighting system lets you emphasize different aspects:
-
-```bash
-# Emphasize pose differences (useful for dance/sports analysis)
-python main.py -i img1.png -o img2.png --cohere-key KEY -w 0.5 0.5 2.0
-
-# Focus on semantic content (useful for style transfer evaluation)
-python main.py -i img1.png -o img2.png --cohere-key KEY -w 0.5 2.0 0.5
-
-# Pure pixel comparison (useful for compression quality)
-python main.py -i img1.png -o img2.png --cohere-key KEY -w 2.0 0.0 0.0
-```
 
 ### 🎯 Recommended Weight Configurations
 
 Based on extensive testing, here are optimal weight configurations for different use cases:
 
-#### **Face-Swap/Self-Swap Analysis** ⭐ _Recommended for this project_
+#### **Face-Swap/Self-Swap Analysis** ⭐ _Default Configuration_
 
 ```bash
-python main.py -i input.png -o output.png --cohere-key KEY -w 1.0 2.5 1.5
+python main.py --batch pairs.csv --cohere-key KEY -w 1.0 2.5 1.5
 ```
 
 **Rationale:**
@@ -268,7 +385,7 @@ python main.py -i input.png -o output.png --cohere-key KEY -w 1.0 2.5 1.5
 #### **General Image Quality Assessment**
 
 ```bash
-python main.py -i input.png -o output.png --cohere-key KEY -w 1.5 2.0 0.5
+python main.py --batch pairs.csv --cohere-key KEY -w 1.5 2.0 0.5
 ```
 
 **Rationale:**
@@ -280,7 +397,7 @@ python main.py -i input.png -o output.png --cohere-key KEY -w 1.5 2.0 0.5
 #### **Compression/Technical Quality Testing**
 
 ```bash
-python main.py -i input.png -o output.png --cohere-key KEY -w 2.0 1.0 0.0
+python main.py --batch pairs.csv --cohere-key KEY -w 2.0 1.0 0.0
 ```
 
 **Rationale:**
@@ -292,7 +409,7 @@ python main.py -i input.png -o output.png --cohere-key KEY -w 2.0 1.0 0.0
 #### **Pose-Critical Analysis** (Dance, Sports, Action)
 
 ```bash
-python main.py -i input.png -o output.png --cohere-key KEY -w 0.5 1.5 2.0
+python main.py --batch pairs.csv --cohere-key KEY -w 0.5 1.5 2.0
 ```
 
 **Rationale:**
@@ -317,6 +434,15 @@ To add new comparison methods:
 1. Create a new file in `methods/` directory
 2. Implement a function that returns a score in [0,1] range
 3. Import and integrate in `main.py`
+4. Update the scoring combination logic
+
+## 📈 Performance Tips
+
+-   **Batch processing** is more efficient than individual pairs
+-   **Directory mode** automatically finds matching pairs
+-   **CSV output** provides structured data for further analysis
+-   **Gradio viewer** handles large result sets efficiently
+-   Use **appropriate weights** for your specific use case
 
 ## 📄 License
 

@@ -1,3 +1,30 @@
+"""
+main.py
+
+Comprehensive image similarity analysis tool with batch processing capabilities.
+Analyzes similarity between original and processed images using multiple computer vision
+and AI techniques: pixel differences, semantic embeddings, and pose detection.
+
+Features:
+- Single pair analysis
+- Batch processing from CSV files
+- Directory scanning for image pairs
+- Weighted scoring system optimized for face-swap analysis
+- CSV output with detailed statistics
+
+Usage:
+    # Single pair
+    python main.py -i input.png -o output.png --cohere-key YOUR_KEY
+    
+    # Batch processing
+    python main.py --batch pairs.csv --cohere-key YOUR_KEY
+    
+    # Directory scanning
+    python main.py --directory ./images --prefix face_swap --cohere-key YOUR_KEY
+
+Default weights [1.0, 2.5, 1.5] are optimized for face-swap analysis.
+"""
+
 import argparse
 import cv2
 import os

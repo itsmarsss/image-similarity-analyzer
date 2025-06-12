@@ -1,18 +1,27 @@
 """
 helper_select_and_crop.py
 
-This script loads two videos (input.mp4 and output.mp4), displays them side by side,
-provides a trackbar to select a frame index, allows the user to draw multiple ROIs on
-the combined view, and saves the cropped regions as numbered pairs (input_001.png, output_001.png, etc.).
+Multi-crop tool for extracting image pairs from video sequences. Loads two videos 
+side-by-side, allows navigation through frames, and enables selection of multiple 
+regions of interest (ROI) for analysis. Automatically generates CSV batch files 
+for use with the main analysis tool.
+
+Features:
+- Side-by-side video comparison
+- Frame navigation with trackbar and keyboard shortcuts
+- Multiple ROI selection per session
+- Numbered output files (prefix_input_001.png, prefix_output_001.png, etc.)
+- Automatic CSV batch file generation
+- Session summary with extraction statistics
 
 Usage:
-    python helper_select_and_crop.py --input input.mp4 --output output.mp4 --width 1280
+    python helper_select_and_crop.py --input input.mp4 --output output.mp4 --prefix face_swap
 
 Options:
     --input,  -i   Path to original input video
-    --output, -o   Path to self-swap output video
+    --output, -o   Path to processed/swapped output video
     --width,  -w   Width of display window (default 1200)
-    --prefix, -p   Filename prefix (default 'pair')
+    --prefix, -p   Filename prefix for output files (default 'pair')
 
 Controls:
     - Trackbar: Navigate through frames
@@ -20,7 +29,11 @@ Controls:
     - 'n' key: Next frame (advance by 1)
     - 'b' key: Previous frame (go back by 1)
     - 'r' key: Reset to frame 0
-    - 'q' key: Quit
+    - 'q' key: Quit and show session summary
+
+Output:
+    - Individual image pairs: prefix_input_XXX.png, prefix_output_XXX.png
+    - CSV batch file: prefix_batch_list.csv (ready for main.py --batch)
 """
 import cv2
 import argparse

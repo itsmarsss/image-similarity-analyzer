@@ -100,7 +100,7 @@ def format_score_info(row: pd.Series) -> str:
         pixel = row['pixel_score']
         embedding = row['embedding_score'] 
         pose = row['pose_score']
-                combined = row['combined_score']
+        combined = row['combined_score']
         
         # Determine overall similarity level
         if combined <= 0.1:
