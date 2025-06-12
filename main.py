@@ -117,6 +117,48 @@ def save_results_csv(results, filename):
             writer.writerow(result)
 
 
+def save_results_txt(results, filename):
+    """Save results to human-readable text file."""
+    with open(filename, 'w') as f:
+        f.write("Image Similarity Analysis Results\n")
+        f.write("=" * 50 + "\n\n")
+        
+        successful = [r for r in results if r['success']]
+        failed = [r for r in results if not r['success']]
+        
+        f.write(f"Total pairs processed: {len(results)}\n")
+        f.write(f"Successful: {len(successful)}\n")
+        f.write(f"Failed: {len(failed)}\n\n")
+        
+        for i, result in enumerate(results, 1):
+            f.write(f"Pair {i:03d}: {result['input_path']} -> {result['output_path']}\n")
+            if result['success']:
+                f.write(f"  Pixel Score:     {result['pixel_score']:.4f}\n")
+                f.write(f"  Embedding Score: {result['embedding_score']:.4f}\n")
+                f.write(f"  Pose Score:      {result['pose_score']:.4f}\n")
+                f.write(f"  Combined Score:  {result['combined_score']:.4f}\n")
+            else:
+                f.write(f"  ERROR: {result['error']}\n")
+            f.write("\n")
+        
+        if successful:
+            pixel_scores = [r['pixel_score'] for r in successful]
+            embedding_scores = [r['embedding_score'] for r in successful]
+            pose_scores = [r['pose_score'] for r in successful]
+            combined_scores = [r['combined_score'] for r in successful]
+            
+            f.write("Summary Statistics:\n")
+            f.write("-" * 20 + "\n")
+            f.write(f"Pixel Score     - Mean: {sum(pixel_scores)/len(pixel_scores):.4f}, "
+                   f"Min: {min(pixel_scores):.4f}, Max: {max(pixel_scores):.4f}\n")
+            f.write(f"Embedding Score - Mean: {sum(embedding_scores)/len(embedding_scores):.4f}, "
+                   f"Min: {min(embedding_scores):.4f}, Max: {max(embedding_scores):.4f}\n")
+            f.write(f"Pose Score      - Mean: {sum(pose_scores)/len(pose_scores):.4f}, "
+                   f"Min: {min(pose_scores):.4f}, Max: {max(pose_scores):.4f}\n")
+            f.write(f"Combined Score  - Mean: {sum(combined_scores)/len(combined_scores):.4f}, "
+                   f"Min: {min(combined_scores):.4f}, Max: {max(combined_scores):.4f}\n")
+
+
 def print_summary_statistics(results):
     """Print summary statistics for batch processing."""
     successful = [r for r in results if r['success']]
@@ -239,16 +281,24 @@ def main():
             print(f"  ✗ Error: {result['error']}")
         print()
 
-    # Save results to CSV if requested
+    # Save results to files
     if args.output_csv:
         save_results_csv(results, args.output_csv)
-        print(f"Results saved to: {args.output_csv}")
+        print(f"CSV results saved to: {args.output_csv}")
+        
+        # Also save text version
+        txt_filename = args.output_csv.replace('.csv', '.txt')
+        save_results_txt(results, txt_filename)
+        print(f"Text results saved to: {txt_filename}")
     elif len(pairs) > 1:
         # Auto-save for batch processing
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         default_csv = f"similarity_results_{timestamp}.csv"
+        default_txt = f"similarity_results_{timestamp}.txt"
+        
         save_results_csv(results, default_csv)
-        print(f"Results saved to: {default_csv}")
+        save_results_txt(results, default_txt)
+        print(f"Results saved to: {default_csv} and {default_txt}")
 
     # Print summary for batch processing
     if len(pairs) > 1:
