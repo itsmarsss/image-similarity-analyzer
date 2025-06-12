@@ -26,6 +26,7 @@ import cv2
 import argparse
 import numpy as np
 import os
+import csv
 
 
 def get_frame(cap, idx):
@@ -204,11 +205,13 @@ def main():
         for pair in saved_pairs:
             print(f"  Frame {pair['frame']:03d}: {pair['input_file']}, {pair['output_file']}")
             
-        # Create a batch file list for easy processing
-        batch_filename = f"{args.prefix}_batch_list.txt"
-        with open(batch_filename, 'w') as f:
+        # Create a batch CSV file for easy processing
+        batch_filename = f"{args.prefix}_batch_list.csv"
+        with open(batch_filename, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['input_path', 'output_path'])  # CSV header
             for pair in saved_pairs:
-                f.write(f"{pair['input_file']},{pair['output_file']}\n")
+                writer.writerow([pair['input_file'], pair['output_file']])
         print(f"\nBatch list saved: {batch_filename}")
         print(f"Use this with: python main.py --batch {batch_filename} --cohere-key YOUR_KEY")
     

@@ -74,21 +74,35 @@ def find_image_pairs(directory, prefix="pair"):
 
 
 def load_batch_file(batch_file):
-    """Load image pairs from a batch file."""
+    """Load image pairs from a batch CSV file."""
     pairs = []
     try:
         with open(batch_file, 'r') as f:
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-                if not line or line.startswith('#'):
+            reader = csv.reader(f)
+            # Skip header if present
+            first_row = next(reader, None)
+            if first_row and (first_row[0].lower() == 'input_path' or first_row[0].lower() == 'input'):
+                # Header row detected, continue with next rows
+                pass
+            else:
+                # No header, process first row as data
+                if first_row and len(first_row) >= 2:
+                    input_path, output_path = first_row[0].strip(), first_row[1].strip()
+                    if os.path.exists(input_path) and os.path.exists(output_path):
+                        pairs.append((input_path, output_path))
+                    else:
+                        if not os.path.exists(input_path):
+                            print(f"Warning: Input file not found: {input_path}")
+                        if not os.path.exists(output_path):
+                            print(f"Warning: Output file not found: {output_path}")
+            
+            # Process remaining rows
+            for line_num, row in enumerate(reader, 2):
+                if len(row) < 2:
+                    print(f"Warning: Invalid format on line {line_num}: {row}")
                     continue
                     
-                parts = line.split(',')
-                if len(parts) != 2:
-                    print(f"Warning: Invalid format on line {line_num}: {line}")
-                    continue
-                    
-                input_path, output_path = parts[0].strip(), parts[1].strip()
+                input_path, output_path = row[0].strip(), row[1].strip()
                 
                 if not os.path.exists(input_path):
                     print(f"Warning: Input file not found: {input_path}")
@@ -117,46 +131,7 @@ def save_results_csv(results, filename):
             writer.writerow(result)
 
 
-def save_results_txt(results, filename):
-    """Save results to human-readable text file."""
-    with open(filename, 'w') as f:
-        f.write("Image Similarity Analysis Results\n")
-        f.write("=" * 50 + "\n\n")
-        
-        successful = [r for r in results if r['success']]
-        failed = [r for r in results if not r['success']]
-        
-        f.write(f"Total pairs processed: {len(results)}\n")
-        f.write(f"Successful: {len(successful)}\n")
-        f.write(f"Failed: {len(failed)}\n\n")
-        
-        for i, result in enumerate(results, 1):
-            f.write(f"Pair {i:03d}: {result['input_path']} -> {result['output_path']}\n")
-            if result['success']:
-                f.write(f"  Pixel Score:     {result['pixel_score']:.4f}\n")
-                f.write(f"  Embedding Score: {result['embedding_score']:.4f}\n")
-                f.write(f"  Pose Score:      {result['pose_score']:.4f}\n")
-                f.write(f"  Combined Score:  {result['combined_score']:.4f}\n")
-            else:
-                f.write(f"  ERROR: {result['error']}\n")
-            f.write("\n")
-        
-        if successful:
-            pixel_scores = [r['pixel_score'] for r in successful]
-            embedding_scores = [r['embedding_score'] for r in successful]
-            pose_scores = [r['pose_score'] for r in successful]
-            combined_scores = [r['combined_score'] for r in successful]
-            
-            f.write("Summary Statistics:\n")
-            f.write("-" * 20 + "\n")
-            f.write(f"Pixel Score     - Mean: {sum(pixel_scores)/len(pixel_scores):.4f}, "
-                   f"Min: {min(pixel_scores):.4f}, Max: {max(pixel_scores):.4f}\n")
-            f.write(f"Embedding Score - Mean: {sum(embedding_scores)/len(embedding_scores):.4f}, "
-                   f"Min: {min(embedding_scores):.4f}, Max: {max(embedding_scores):.4f}\n")
-            f.write(f"Pose Score      - Mean: {sum(pose_scores)/len(pose_scores):.4f}, "
-                   f"Min: {min(pose_scores):.4f}, Max: {max(pose_scores):.4f}\n")
-            f.write(f"Combined Score  - Mean: {sum(combined_scores)/len(combined_scores):.4f}, "
-                   f"Min: {min(combined_scores):.4f}, Max: {max(combined_scores):.4f}\n")
+
 
 
 def print_summary_statistics(results):
@@ -203,7 +178,7 @@ def main():
     p.add_argument('-o', '--output', help='Path to processed image')
     
     # Batch processing mode
-    p.add_argument('--batch', help='Path to batch file (CSV format: input_path,output_path)')
+    p.add_argument('--batch', help='Path to batch CSV file with input_path,output_path columns')
     p.add_argument('--directory', help='Directory containing image pairs')
     p.add_argument('--prefix', default='pair', help='Filename prefix for directory mode (default: pair)')
     
@@ -214,7 +189,7 @@ def main():
     p.add_argument('--cohere-key', required=True, help='Cohere API key')
     
     # Output options
-    p.add_argument('--output-csv', help='Save results to CSV file')
+    p.add_argument('--output-csv', help='Save results to specified CSV file')
     p.add_argument('--verbose', '-v', action='store_true', help='Verbose output for each pair')
     
     args = p.parse_args()
@@ -229,7 +204,7 @@ def main():
     if mode_count != 1:
         print("Error: Specify exactly one mode:")
         print("  Single pair: --input and --output")
-        print("  Batch file:  --batch")
+        print("  Batch CSV:   --batch")
         print("  Directory:   --directory")
         p.print_help()
         return
@@ -243,9 +218,9 @@ def main():
         print(f"Processing single pair: {args.input} -> {args.output}")
         
     elif args.batch:
-        # Batch file mode
+        # Batch CSV mode
         pairs = load_batch_file(args.batch)
-        print(f"Loaded {len(pairs)} pairs from batch file: {args.batch}")
+        print(f"Loaded {len(pairs)} pairs from batch CSV: {args.batch}")
         
     elif args.directory:
         # Directory mode
@@ -281,24 +256,17 @@ def main():
             print(f"  ✗ Error: {result['error']}")
         print()
 
-    # Save results to files
+    # Save results to CSV file
     if args.output_csv:
         save_results_csv(results, args.output_csv)
-        print(f"CSV results saved to: {args.output_csv}")
-        
-        # Also save text version
-        txt_filename = args.output_csv.replace('.csv', '.txt')
-        save_results_txt(results, txt_filename)
-        print(f"Text results saved to: {txt_filename}")
+        print(f"Results saved to: {args.output_csv}")
     elif len(pairs) > 1:
         # Auto-save for batch processing
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         default_csv = f"similarity_results_{timestamp}.csv"
-        default_txt = f"similarity_results_{timestamp}.txt"
         
         save_results_csv(results, default_csv)
-        save_results_txt(results, default_txt)
-        print(f"Results saved to: {default_csv} and {default_txt}")
+        print(f"Results saved to: {default_csv}")
 
     # Print summary for batch processing
     if len(pairs) > 1:
