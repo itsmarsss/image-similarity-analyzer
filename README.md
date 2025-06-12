@@ -126,6 +126,49 @@ python main.py -i input.png -o output.png --cohere-key YOUR_API_KEY -w 2.0 1.0 0
 └── README.md                  # This file
 ```
 
+## 🎬 Video Frame Selection Helper
+
+For video analysis workflows, this project includes a helpful utility script:
+
+### `helper_select_and_crop.py`
+
+This interactive tool helps you extract specific frames and regions from video pairs:
+
+**Features:**
+
+-   Load two videos side-by-side (e.g., original vs. processed)
+-   Navigate through frames with a trackbar
+-   Select regions of interest (ROI) by drawing rectangles
+-   Export cropped frames as `input.png` and `output.png`
+
+**Usage:**
+
+```bash
+python helper_select_and_crop.py -i input.mp4 -o output.mp4 --width 1280
+```
+
+**Controls:**
+
+-   **Trackbar**: Navigate through video frames
+-   **'s' key**: Select ROI (opens selection tool)
+-   **'q' key**: Quit without saving
+
+**Workflow Example:**
+
+```bash
+# Step 1: Extract frames from videos
+python helper_select_and_crop.py -i original_video.mp4 -o processed_video.mp4
+
+# Step 2: Analyze the extracted images
+python main.py -i input.png -o output.png --cohere-key YOUR_KEY
+```
+
+This tool is particularly useful for:
+
+-   Video face-swap analysis
+-   Comparing specific moments in video sequences
+-   Creating matched image pairs from video content
+
 ## 🔧 Dependencies
 
 -   **numpy** - Numerical computations
@@ -205,6 +248,67 @@ python main.py -i img1.png -o img2.png --cohere-key KEY -w 0.5 2.0 0.5
 # Pure pixel comparison (useful for compression quality)
 python main.py -i img1.png -o img2.png --cohere-key KEY -w 2.0 0.0 0.0
 ```
+
+### 🎯 Recommended Weight Configurations
+
+Based on extensive testing, here are optimal weight configurations for different use cases:
+
+#### **Face-Swap/Self-Swap Analysis** ⭐ _Recommended for this project_
+
+```bash
+python main.py -i input.png -o output.png --cohere-key KEY -w 1.0 2.5 1.5
+```
+
+**Rationale:**
+
+-   **Embedding (2.5x)**: Primary focus on semantic realism and identity preservation
+-   **Pose (1.5x)**: Important for human body/gesture preservation
+-   **Pixel (1.0x)**: Baseline technical quality assessment
+
+#### **General Image Quality Assessment**
+
+```bash
+python main.py -i input.png -o output.png --cohere-key KEY -w 1.5 2.0 0.5
+```
+
+**Rationale:**
+
+-   **Embedding (2.0x)**: Main measure of content preservation
+-   **Pixel (1.5x)**: Important for detecting visual artifacts
+-   **Pose (0.5x)**: Less critical for non-human subjects
+
+#### **Compression/Technical Quality Testing**
+
+```bash
+python main.py -i input.png -o output.png --cohere-key KEY -w 2.0 1.0 0.0
+```
+
+**Rationale:**
+
+-   **Pixel (2.0x)**: Primary focus on technical degradation detection
+-   **Embedding (1.0x)**: Secondary content preservation check
+-   **Pose (0.0x)**: Not relevant for compression analysis
+
+#### **Pose-Critical Analysis** (Dance, Sports, Action)
+
+```bash
+python main.py -i input.png -o output.png --cohere-key KEY -w 0.5 1.5 2.0
+```
+
+**Rationale:**
+
+-   **Pose (2.0x)**: Critical for movement/posture accuracy
+-   **Embedding (1.5x)**: Maintains content understanding
+-   **Pixel (0.5x)**: Minor importance for pose-focused analysis
+
+### 📊 Weight Selection Guide
+
+| Use Case               | Pixel Weight | Embedding Weight | Pose Weight | Best For                       |
+| ---------------------- | ------------ | ---------------- | ----------- | ------------------------------ |
+| **Face-Swap Analysis** | 1.0          | **2.5**          | 1.5         | Identity preservation, realism |
+| **General Quality**    | 1.5          | **2.0**          | 0.5         | Overall image assessment       |
+| **Technical Testing**  | **2.0**      | 1.0              | 0.0         | Compression, artifacts         |
+| **Pose Analysis**      | 0.5          | 1.5              | **2.0**     | Movement, gesture accuracy     |
 
 ### Extending the Tool
 

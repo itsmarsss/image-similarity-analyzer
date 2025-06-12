@@ -12,7 +12,7 @@ def main():
     p.add_argument('-i', '--input',    required=True, help='Path to original image (input.png)')
     p.add_argument('-o', '--output',   required=True, help='Path to self-swap image (output.png)')
     p.add_argument('-w', '--weights',  nargs=3, type=float,
-                   default=[1.0, 1.0, 1.0],
+                   default=[1.0, 2.5, 1.5],
                    help='Weights: pixel, embedding, pose')
     p.add_argument('--cohere-key',     required=True,
                    help='Cohere API key')
