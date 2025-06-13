@@ -1,5 +1,5 @@
 """
-gradio_helper_select_and_crop.py
+helper_select_and_crop.py
 
 Web-based multi-crop tool for extracting image pairs from video sequences using Gradio.
 Provides an intuitive web interface for loading two videos side-by-side, navigating through 
@@ -16,7 +16,7 @@ Features:
 - Session download with all crops and batch file
 
 Usage:
-    python gradio_helper_select_and_crop.py
+    python helper_select_and_crop.py
 
 Then open the provided URL in your browser and upload your videos.
 """
@@ -302,13 +302,16 @@ class VideoCropTool:
         
         return result_msg, self.get_session_summary()
     
-    def auto_crop_every_10th_frame(self):
-        """Automatically crop full frames for every 10th frame"""
+    def auto_crop_every_nth_frame(self, frame_interval=10):
+        """Automatically crop full frames for every nth frame"""
         if not hasattr(self, 'current_frames') or not self.cap_input or not self.cap_output:
             return "No videos loaded. Please load videos first.", None
             
         if self.total_frames == 0:
             return "No frames available to process.", None
+            
+        if frame_interval <= 0:
+            return "Frame interval must be greater than 0.", None
             
         # Get frame dimensions from first frame
         frame1 = self.get_frame(self.cap_input, 0)
@@ -317,9 +320,9 @@ class VideoCropTool:
             
         height, width = frame1.shape[:2]
         
-        # Process every 10th frame
+        # Process every nth frame
         processed_frames = []
-        for frame_idx in range(0, self.total_frames, 10):
+        for frame_idx in range(0, self.total_frames, frame_interval):
             # Get frames at this index
             input_frame = self.get_frame(self.cap_input, frame_idx)
             output_frame = self.get_frame(self.cap_output, frame_idx)
@@ -348,7 +351,7 @@ class VideoCropTool:
             processed_frames.append(frame_idx)
             self.crop_counter += 1
         
-        result_msg = f"✓ Auto-cropped {len(processed_frames)} frames (every 10th frame)\n"
+        result_msg = f"✓ Auto-cropped {len(processed_frames)} frames (every {frame_interval} frame{'s' if frame_interval > 1 else ''})\n"
         result_msg += f"Frames processed: {processed_frames}\n"
         result_msg += f"Full frame size: {width}x{height}"
         
@@ -413,8 +416,8 @@ def create_interface():
     def crop_wrapper(x, y, w, h):
         return tool.crop_and_save(x, y, w, h)
     
-    def auto_crop_wrapper():
-        return tool.auto_crop_every_10th_frame()
+    def auto_crop_wrapper(frame_interval):
+        return tool.auto_crop_every_nth_frame(frame_interval)
     
     def download_wrapper():
         return tool.create_download_package()
@@ -516,8 +519,13 @@ def create_interface():
         
         # Auto-crop section
         with gr.Row():
-            auto_crop_btn = gr.Button("🚀 Auto-Crop Every 10th Frame (Full Size)", variant="primary", size="lg")
-            auto_crop_result = gr.Textbox(label="🤖 Auto-Crop Result", interactive=False)
+            with gr.Column(scale=1):
+                frame_interval_input = gr.Number(label="Frame Interval", value=10, minimum=1, precision=0, 
+                                               info="Extract every nth frame (e.g., 10 = every 10th frame)")
+            with gr.Column(scale=2):
+                auto_crop_btn = gr.Button("🚀 Auto-Crop Every Nth Frame (Full Size)", variant="primary", size="lg")
+            with gr.Column(scale=2):
+                auto_crop_result = gr.Textbox(label="🤖 Auto-Crop Result", interactive=False)
         
         with gr.Row():
             with gr.Column():
@@ -575,6 +583,7 @@ def create_interface():
         
         auto_crop_btn.click(
             auto_crop_wrapper,
+            inputs=[frame_interval_input],
             outputs=[auto_crop_result, session_summary]
         )
         
