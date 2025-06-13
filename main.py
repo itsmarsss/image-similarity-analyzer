@@ -1,28 +1,63 @@
 """
 main.py
 
-Comprehensive image similarity analysis tool with batch processing capabilities.
+Comprehensive image similarity analysis tool with flexible method selection and batch processing.
 Analyzes similarity between original and processed images using multiple computer vision
 and AI techniques: pixel differences, semantic embeddings, and pose detection.
 
 Features:
-- Single pair analysis
-- Batch processing from CSV files
-- Directory scanning for image pairs
-- Weighted scoring system optimized for body-swap analysis
-- CSV output with detailed statistics
+- Single pair analysis with detailed scoring
+- Batch processing from CSV files with auto-save
+- Directory scanning for image pairs with custom prefixes
+- Selective method execution (disable pixel/embedding/pose analysis)
+- Flexible weighted scoring system with individual or combined weights
+- Rate-limited API calls with configurable delays
+- Multiple output modes (verbose, normal, quiet)
+- CSV export with method tracking and comprehensive statistics
 
-Usage:
-    # Single pair
+Analysis Methods:
+- Pixel Difference: Direct pixel-level comparison using computer vision
+- Semantic Embedding: AI-powered semantic similarity via Cohere API
+- Pose Detection: Human pose comparison using MediaPipe
+
+Usage Examples:
+    # Single pair analysis
     python main.py -i input.png -o output.png --cohere-key YOUR_KEY
     
-    # Batch processing
+    # Batch processing with all methods
     python main.py --batch pairs.csv --cohere-key YOUR_KEY
     
-    # Directory scanning
+    # Directory scanning with custom prefix
     python main.py --directory ./images --prefix body_swap --cohere-key YOUR_KEY
+    
+    # Disable expensive embedding analysis
+    python main.py --batch pairs.csv --disable-embedding
+    
+    # Custom weights (individual)
+    python main.py --batch pairs.csv --pixel-weight 2.0 --embedding-weight 1.5 --pose-weight 0.5 --cohere-key YOUR_KEY
+    
+    # Custom weights (combined)
+    python main.py --batch pairs.csv -w 2.0 1.5 0.5 --cohere-key YOUR_KEY
+    
+    # Quiet mode with custom rate limiting
+    python main.py --batch pairs.csv --quiet --rate-limit-delay 2.0 --cohere-key YOUR_KEY
+    
+    # Only pixel and pose analysis (no API required)
+    python main.py --batch pairs.csv --disable-embedding --verbose
 
-Default weights [1.0, 2.5, 1.5] are optimized for body-swap analysis.
+Method Control:
+- Use --disable-pixel, --disable-embedding, or --disable-pose to skip specific analyses
+- At least one method must remain enabled
+- Cohere API key only required when embedding analysis is enabled
+- Disabled methods automatically get zero weight in final scoring
+
+Output Options:
+- --verbose: Detailed scores for each method and pair
+- --quiet: Minimal output (errors and final results only)
+- --output-csv: Save to specific CSV file
+- --no-auto-save: Disable automatic timestamped CSV generation
+
+Default weights [1.0, 1.0, 1.0] provide equal weighting. Adjust based on your use case.
 """
 
 import argparse
@@ -39,8 +74,11 @@ from methods.method_pose       import pose_difference_score
 from methods.method_combine_scores    import combined_score
 
 
-def process_single_pair(input_path, output_path, cohere_key, weights):
+def process_single_pair(input_path, output_path, cohere_key, weights, disabled_methods=None):
     """Process a single image pair and return results."""
+    if disabled_methods is None:
+        disabled_methods = {'pixel': False, 'embedding': False, 'pose': False}
+    
     try:
         img1 = cv2.imread(input_path)
         img2 = cv2.imread(output_path)
@@ -50,10 +88,22 @@ def process_single_pair(input_path, output_path, cohere_key, weights):
         if img2 is None:
             raise ValueError(f"Could not load output image: {output_path}")
 
-        ps = pixel_difference_score(img1, img2)
-        es = embedding_difference_score(img1, img2, cohere_key)
-        os_score = pose_difference_score(img1, img2)
+        # Initialize scores
+        ps = None
+        es = None
+        os_score = None
 
+        # Run enabled methods only
+        if not disabled_methods['pixel']:
+            ps = pixel_difference_score(img1, img2)
+        
+        if not disabled_methods['embedding']:
+            es = embedding_difference_score(img1, img2, cohere_key)
+        
+        if not disabled_methods['pose']:
+            os_score = pose_difference_score(img1, img2)
+
+        # Calculate combined score (handles None values)
         w = {'pixel': weights[0], 'embedding': weights[1], 'pose': weights[2]}
         cs = combined_score(ps, es, os_score, w)
 
@@ -65,7 +115,12 @@ def process_single_pair(input_path, output_path, cohere_key, weights):
             'pose_score': os_score,
             'combined_score': cs,
             'success': True,
-            'error': None
+            'error': None,
+            'methods_used': {
+                'pixel': not disabled_methods['pixel'],
+                'embedding': not disabled_methods['embedding'],
+                'pose': not disabled_methods['pose']
+            }
         }
     except Exception as e:
         return {
@@ -76,7 +131,12 @@ def process_single_pair(input_path, output_path, cohere_key, weights):
             'pose_score': None,
             'combined_score': None,
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'methods_used': {
+                'pixel': not disabled_methods['pixel'],
+                'embedding': not disabled_methods['embedding'],
+                'pose': not disabled_methods['pose']
+            }
         }
 
 
@@ -156,12 +216,20 @@ def save_results_csv(results, filename):
     """Save results to CSV file."""
     with open(filename, 'w', newline='') as csvfile:
         fieldnames = ['input_path', 'output_path', 'pixel_score', 'embedding_score', 
-                     'pose_score', 'combined_score', 'success', 'error']
+                     'pose_score', 'combined_score', 'success', 'error',
+                     'methods_pixel', 'methods_embedding', 'methods_pose']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         
         writer.writeheader()
         for result in results:
-            writer.writerow(result)
+            # Flatten methods_used into separate columns
+            row = result.copy()
+            if 'methods_used' in row:
+                row['methods_pixel'] = row['methods_used']['pixel']
+                row['methods_embedding'] = row['methods_used']['embedding']
+                row['methods_pose'] = row['methods_used']['pose']
+                del row['methods_used']
+            writer.writerow(row)
 
 
 
@@ -206,26 +274,80 @@ def print_summary_statistics(results):
 def main():
     p = argparse.ArgumentParser(description='Image Similarity Analysis Tool with Batch Processing')
     
-    # Single pair mode
-    p.add_argument('-i', '--input', help='Path to original image')
-    p.add_argument('-o', '--output', help='Path to processed image')
+    # Input/Output arguments (consistent with helper files)
+    p.add_argument('--input-video', help='Path to input video file')
+    p.add_argument('--output-video', help='Path to output video file')
+    p.add_argument('-i', '--input', help='Path to original image (single pair mode)')
+    p.add_argument('-o', '--output', help='Path to processed image (single pair mode)')
     
     # Batch processing mode
     p.add_argument('--batch', help='Path to batch CSV file with input_path,output_path columns')
     p.add_argument('--directory', help='Directory containing image pairs')
     p.add_argument('--prefix', default='pair', help='Filename prefix for directory mode (default: pair)')
     
-    # Common options
+    # Method control options
+    p.add_argument('--disable-pixel', action='store_true', 
+                   help='Disable pixel difference analysis')
+    p.add_argument('--disable-embedding', action='store_true', 
+                   help='Disable semantic embedding analysis')
+    p.add_argument('--disable-pose', action='store_true', 
+                   help='Disable pose detection analysis')
+    
+    # Scoring options
     p.add_argument('-w', '--weights', nargs=3, type=float,
                    default=[1.0, 1.0, 1.0],
                    help='Weights: pixel, embedding, pose (default: 1.0 1.0 1.0)')
-    p.add_argument('--cohere-key', required=True, help='Cohere API key')
+    p.add_argument('--pixel-weight', type=float, default=1.0,
+                   help='Weight for pixel difference score (default: 1.0)')
+    p.add_argument('--embedding-weight', type=float, default=1.0,
+                   help='Weight for embedding similarity score (default: 1.0)')
+    p.add_argument('--pose-weight', type=float, default=1.0,
+                   help='Weight for pose similarity score (default: 1.0)')
+    
+    # API configuration
+    p.add_argument('--cohere-key', help='Cohere API key for embedding analysis (required unless --disable-embedding is used)')
+    p.add_argument('--rate-limit-delay', type=float, default=1.0,
+                   help='Delay between API calls in seconds (default: 1.0)')
     
     # Output options
     p.add_argument('--output-csv', help='Save results to specified CSV file')
+    p.add_argument('--auto-save', action='store_true', default=True,
+                   help='Automatically save batch results to timestamped CSV (default: True)')
+    p.add_argument('--no-auto-save', action='store_true',
+                   help='Disable automatic saving of batch results')
     p.add_argument('--verbose', '-v', action='store_true', help='Verbose output for each pair')
+    p.add_argument('--quiet', '-q', action='store_true', help='Minimal output (only errors and final results)')
     
     args = p.parse_args()
+
+    # Handle weight arguments (prefer individual weights over combined weights)
+    if any([args.pixel_weight != 1.0, args.embedding_weight != 1.0, args.pose_weight != 1.0]):
+        weights = [args.pixel_weight, args.embedding_weight, args.pose_weight]
+    else:
+        weights = args.weights
+    
+    # Handle auto-save logic
+    auto_save = args.auto_save and not args.no_auto_save
+    
+    # Validate method selection
+    methods_disabled = [args.disable_pixel, args.disable_embedding, args.disable_pose]
+    if all(methods_disabled):
+        print("Error: Cannot disable all analysis methods. At least one method must be enabled.")
+        return
+    
+    # Adjust weights for disabled methods
+    if args.disable_pixel:
+        weights[0] = 0.0
+    if args.disable_embedding:
+        weights[1] = 0.0
+    if args.disable_pose:
+        weights[2] = 0.0
+    
+    # Validate Cohere key requirement
+    if not args.disable_embedding and not args.cohere_key:
+        print("Error: --cohere-key is required when embedding analysis is enabled")
+        print("Use --disable-embedding to skip embedding analysis, or provide --cohere-key")
+        return
 
     # Validate arguments
     mode_count = sum([
@@ -266,49 +388,71 @@ def main():
 
     # Process all pairs
     results = []
-    weights = args.weights
     
-    print(f"\nUsing weights: Pixel={weights[0]}, Embedding={weights[1]}, Pose={weights[2]}")
-    print(f"Processing {len(pairs)} pairs...\n")
+    # Create disabled methods dictionary
+    disabled_methods = {
+        'pixel': args.disable_pixel,
+        'embedding': args.disable_embedding,
+        'pose': args.disable_pose
+    }
+    
+    # Display configuration
+    if not args.quiet:
+        print(f"\nConfiguration:")
+        print(f"  Weights: Pixel={weights[0]}, Embedding={weights[1]}, Pose={weights[2]}")
+        print(f"  Methods: Pixel={'✗' if args.disable_pixel else '✓'}, "
+              f"Embedding={'✗' if args.disable_embedding else '✓'}, "
+              f"Pose={'✗' if args.disable_pose else '✓'}")
+        print(f"  Rate limit delay: {args.rate_limit_delay}s")
+        print(f"Processing {len(pairs)} pairs...\n")
     
     for i, (input_path, output_path) in enumerate(pairs, 1):
-        print(f"[{i}/{len(pairs)}] Processing: {os.path.basename(input_path)} -> {os.path.basename(output_path)}")
+        if not args.quiet:
+            print(f"[{i}/{len(pairs)}] Processing: {os.path.basename(input_path)} -> {os.path.basename(output_path)}")
         
-        result = process_single_pair(input_path, output_path, args.cohere_key, weights)
+        result = process_single_pair(input_path, output_path, args.cohere_key, weights, disabled_methods)
         results.append(result)
         
         if result['success']:
             if args.verbose or len(pairs) == 1:
-                print(f"  Pixel Score:     {result['pixel_score']:.4f}")
-                print(f"  Embedding Score: {result['embedding_score']:.4f}")
-                print(f"  Pose Score:      {result['pose_score']:.4f}")
+                if result['pixel_score'] is not None:
+                    print(f"  Pixel Score:     {result['pixel_score']:.4f}")
+                if result['embedding_score'] is not None:
+                    print(f"  Embedding Score: {result['embedding_score']:.4f}")
+                if result['pose_score'] is not None:
+                    print(f"  Pose Score:      {result['pose_score']:.4f}")
                 print(f"  Combined Score:  {result['combined_score']:.4f}")
-            else:
+            elif not args.quiet:
                 print(f"  ✓ Combined Score: {result['combined_score']:.4f}")
         else:
-            print(f"  ✗ Error: {result['error']}")
+            if not args.quiet:
+                print(f"  ✗ Error: {result['error']}")
         
-        # Add delay between Cohere API calls to avoid rate limiting (except for the last pair)
-        if len(pairs) > 1 and i < len(pairs) and result['success']:
-            print(f"  Waiting 1 seconds to avoid rate limits...")
-            time.sleep(1)
+        # Add delay between API calls to avoid rate limiting (except for the last pair)
+        if len(pairs) > 1 and i < len(pairs) and result['success'] and not args.disable_embedding:
+            if not args.quiet:
+                print(f"  Waiting {args.rate_limit_delay} seconds to avoid rate limits...")
+            time.sleep(args.rate_limit_delay)
             
-        print()
+        if not args.quiet:
+            print()
 
     # Save results to CSV file
     if args.output_csv:
         save_results_csv(results, args.output_csv)
-        print(f"Results saved to: {args.output_csv}")
-    elif len(pairs) > 1:
+        if not args.quiet:
+            print(f"Results saved to: {args.output_csv}")
+    elif len(pairs) > 1 and auto_save:
         # Auto-save for batch processing
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         default_csv = f"similarity_results_{timestamp}.csv"
         
         save_results_csv(results, default_csv)
-        print(f"Results saved to: {default_csv}")
+        if not args.quiet:
+            print(f"Results saved to: {default_csv}")
 
     # Print summary for batch processing
-    if len(pairs) > 1:
+    if len(pairs) > 1 and not args.quiet:
         print_summary_statistics(results)
 
 
