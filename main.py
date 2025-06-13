@@ -30,6 +30,7 @@ import cv2
 import os
 import glob
 import csv
+import time
 from datetime import datetime
 
 from methods.method_pixel_diff import pixel_difference_score
@@ -286,6 +287,12 @@ def main():
                 print(f"  ✓ Combined Score: {result['combined_score']:.4f}")
         else:
             print(f"  ✗ Error: {result['error']}")
+        
+        # Add delay between Cohere API calls to avoid rate limiting (except for the last pair)
+        if len(pairs) > 1 and i < len(pairs) and result['success']:
+            print(f"  Waiting 1 seconds to avoid rate limits...")
+            time.sleep(1)
+            
         print()
 
     # Save results to CSV file
