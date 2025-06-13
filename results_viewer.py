@@ -2,17 +2,40 @@
 results_viewer.py
 
 Interactive web-based visualization tool for image similarity analysis results.
-Displays image pairs side by side with score breakdowns using Gradio interface.
+Displays image pairs side by side with score breakdowns, timeline plots, and 
+navigation controls using Gradio interface.
+
+Features:
+- Side-by-side image comparison with proper scaling
+- Color-coded score panels with detailed breakdowns
+- Timeline plots for score analysis (requires matplotlib)
+- Navigation controls (Previous/Next buttons and direct pair jumping)
+- Support for both analyzed results and unanalyzed batch files
+- Automatic file format detection
+- Public sharing capability for remote collaboration
 
 Usage:
-    python results_viewer.py --results similarity_results_20231201_143000.csv
-    python results_viewer.py --results pair_batch_list.csv --format batch
+    python results_viewer.py -r similarity_results.csv [options]
+
+Examples:
+    python results_viewer.py -r similarity_results.csv                    # View analysis results
+    python results_viewer.py -r batch_list.csv --format batch             # View batch file
+    python results_viewer.py -r results.csv -p 8080                       # Custom port
+    python results_viewer.py -r results.csv --share                       # Public sharing
+    python results_viewer.py -r results.csv -p 8080 --share               # Custom port with sharing
 
 Options:
-    --results, -r   Path to results file (CSV or batch list)
-    --format, -f    File format: 'csv' or 'batch' (auto-detected if not specified)
-    --port, -p      Port for web interface (default: 7860)
-    --share         Create public shareable link
+    -r, --results   Path to results CSV file or batch list (required)
+    -f, --format    File format: 'csv' (results) or 'batch' (pairs list) - auto-detected if not specified
+    -p, --port      Port for web interface (default: 7860)
+    --share         Create public shareable link for remote access
+    --help          Show detailed help message with examples
+
+File Formats:
+    csv     - Similarity analysis results with computed scores
+    batch   - Input/output pairs list (before analysis)
+
+The viewer automatically detects the file format based on content if not specified.
 """
 
 import gradio as gr
@@ -433,12 +456,32 @@ def create_viewer_interface(df: pd.DataFrame):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Interactive Web-based Image Similarity Results Viewer')
-    parser.add_argument('-r', '--results', required=True, help='Path to results CSV file')
+    parser = argparse.ArgumentParser(
+        description='Interactive Web-based Image Similarity Results Viewer',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    python results_viewer.py -r similarity_results.csv                    # View analysis results
+    python results_viewer.py -r batch_list.csv --format batch             # View batch file
+    python results_viewer.py -r results.csv -p 8080                       # Custom port
+    python results_viewer.py -r results.csv --share                       # Public sharing
+    python results_viewer.py -r results.csv -p 8080 --share               # Custom port with sharing
+
+File Formats:
+    csv     - Similarity analysis results with scores (default)
+    batch   - Input/output pairs list (before analysis)
+
+The viewer automatically detects the file format if not specified.
+        """
+    )
+    parser.add_argument('-r', '--results', required=True, 
+                       help='Path to results CSV file or batch list')
     parser.add_argument('-f', '--format', choices=['csv', 'batch'], 
-                       help='File format (auto-detected if not specified)')
-    parser.add_argument('-p', '--port', type=int, default=7860, help='Port for web interface')
-    parser.add_argument('--share', action='store_true', help='Create public shareable link')
+                       help='File format: csv (results) or batch (pairs list) - auto-detected if not specified')
+    parser.add_argument('-p', '--port', type=int, default=7860, 
+                       help='Port for web interface (default: 7860)')
+    parser.add_argument('--share', action='store_true', 
+                       help='Create public shareable link for remote access')
     args = parser.parse_args()
     
     # Detect format if not specified

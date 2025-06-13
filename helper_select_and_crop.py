@@ -16,7 +16,18 @@ Features:
 - Session download with all crops and batch file
 
 Usage:
-    python helper_select_and_crop.py
+    python helper_select_and_crop.py [options]
+    
+Options:
+    -p, --port      Port for web interface (default: 7861)
+    --share         Create public shareable link
+    --help          Show this help message
+
+Examples:
+    python helper_select_and_crop.py                    # Default port 7861
+    python helper_select_and_crop.py -p 8080            # Custom port
+    python helper_select_and_crop.py --share            # Public sharing
+    python helper_select_and_crop.py -p 8080 --share    # Custom port with sharing
 
 Then open the provided URL in your browser and upload your videos.
 """
@@ -32,6 +43,7 @@ from PIL import Image, ImageDraw
 import io
 import base64
 import json
+import argparse
 
 
 class VideoCropTool:
@@ -637,11 +649,28 @@ def create_interface():
     return iface
 
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(description='Web-based Video Multi-Crop Tool')
+    parser.add_argument('-p', '--port', type=int, default=7861, 
+                       help='Port for web interface (default: 7861)')
+    parser.add_argument('--share', action='store_true', 
+                       help='Create public shareable link')
+    args = parser.parse_args()
+    
+    print(f"\n🎬 Starting Video Multi-Crop Tool...")
+    print(f"📱 Web interface will be available at:")
+    print(f"   Local: http://localhost:{args.port}")
+    if args.share:
+        print(f"🌐 Public link will be generated for sharing")
+    print(f"📖 Upload your videos and start cropping!")
+    
     interface = create_interface()
     interface.launch(
-        server_name="0.0.0.0",
-        server_port=7861,
-        share=False,
-        debug=True
-    ) 
+        server_port=args.port,
+        share=args.share,
+        inbrowser=True
+    )
+
+
+if __name__ == "__main__":
+    main() 

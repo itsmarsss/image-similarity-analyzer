@@ -1,3 +1,45 @@
+"""
+analysis.py
+
+Interactive web-based tool for analyzing similarity data correlations and optimizing weights.
+Compares computed similarity scores with human annotations to find optimal weight configurations
+using Non-Negative Least Squares (NNLS) optimization.
+
+Features:
+- Upload similarity results CSV and human annotation CSV files
+- Correlation analysis between computed scores and human judgments
+- NNLS weight optimization for selected methods
+- Method selection for targeted optimization
+- Sample data generation for testing
+- Detailed statistics and recommendations
+
+Usage:
+    python analysis.py [options]
+    
+Options:
+    -p, --port      Port for web interface (default: 7862)
+    --share         Create public shareable link
+    --help          Show detailed help message with examples
+
+Examples:
+    python analysis.py                    # Default port 7862
+    python analysis.py -p 8080            # Custom port
+    python analysis.py --share            # Public sharing
+    python analysis.py -p 8080 --share    # Custom port with sharing
+
+File Requirements:
+    Similarity Data CSV (from main.py output):
+    - pixel_score, embedding_score, pose_score, combined_score columns
+    - Optional: frame column for matching with annotations
+    
+    Human Annotation CSV:
+    - frame column (0, 1, 2, ...)
+    - defect/human_annotation/annotation column with ratings
+
+The tool automatically normalizes annotation values to 0-1 scale and provides
+optimized weight recommendations for improved similarity analysis.
+"""
+
 import pandas as pd
 import numpy as np
 from scipy.stats import pearsonr, spearmanr
@@ -6,6 +48,7 @@ import gradio as gr
 import io
 import zipfile
 import os
+import argparse
 
 
 def analyze_similarity_data(data_csv_file, annotation_csv_file, selected_methods):
@@ -412,11 +455,56 @@ def create_interface():
     return iface
 
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(
+        description='Interactive Web-based Similarity Analysis Tool',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    python analysis.py                    # Default port 7862
+    python analysis.py -p 8080            # Custom port
+    python analysis.py --share            # Public sharing
+    python analysis.py -p 8080 --share    # Custom port with sharing
+
+File Requirements:
+    Similarity Data CSV (from main.py output):
+    - pixel_score, embedding_score, pose_score, combined_score columns
+    - Optional: frame column for matching with annotations
+    
+    Human Annotation CSV:
+    - frame column (0, 1, 2, ...)
+    - defect/human_annotation/annotation column with ratings
+
+Workflow:
+    1. Run similarity analysis: python main.py --batch data.csv --cohere-key KEY
+    2. Create human annotations CSV with frame numbers and ratings
+    3. Upload both files to this tool for correlation analysis
+    4. Use recommended weights in future main.py runs
+
+The tool automatically normalizes annotation values and provides optimized
+weight recommendations using Non-Negative Least Squares (NNLS) optimization.
+        """
+    )
+    parser.add_argument('-p', '--port', type=int, default=7862, 
+                       help='Port for web interface (default: 7862)')
+    parser.add_argument('--share', action='store_true', 
+                       help='Create public shareable link for remote access')
+    args = parser.parse_args()
+    
+    print(f"\n📊 Starting Similarity Analysis Tool...")
+    print(f"📱 Web interface will be available at:")
+    print(f"   Local: http://localhost:{args.port}")
+    if args.share:
+        print(f"🌐 Public link will be generated for sharing")
+    print(f"📈 Upload your similarity data and annotations to optimize weights!")
+    
     interface = create_interface()
     interface.launch(
-        server_name="0.0.0.0",
-        server_port=7862,
-        share=False,
-        debug=True
+        server_port=args.port,
+        share=args.share,
+        inbrowser=True
     )
+
+
+if __name__ == "__main__":
+    main()
