@@ -17,7 +17,7 @@ Features:
 
 Usage:
     python gradio_helper_select_and_crop.py
-    
+
 Then open the provided URL in your browser and upload your videos.
 """
 
@@ -40,7 +40,7 @@ class VideoCropTool:
         self.cap_output = None
         self.total_frames = 0
         self.current_frame_idx = 0
-        self.crop_counter = 1
+        self.crop_counter = 0
         self.saved_pairs = []
         self.temp_dir = tempfile.mkdtemp()
         self.prefix = "pair"
@@ -77,7 +77,7 @@ class VideoCropTool:
             return "Error: No frames found in one or both videos.", None, None, None, None, 0, [], ""
             
         self.current_frame_idx = 0
-        self.crop_counter = 1
+        self.crop_counter = 0
         self.saved_pairs = []
         # Reset ROI coordinates
         self.roi_coordinates = {'x_temp': 0, 'y_temp': 0, 'x_new': 0, 'y_new': 0, 'clicks': 0}
@@ -126,7 +126,7 @@ class VideoCropTool:
         if not ret:
             return None
         return frame
-    
+
     def get_individual_frames(self, frame_idx):
         """Get individual input and output frames"""
         if not self.cap_input or not self.cap_output:
@@ -276,7 +276,7 @@ class VideoCropTool:
         if input_crop.size == 0 or output_crop.size == 0:
             return "Failed to extract crop region. Please check coordinates.", None
             
-        # Save crops
+            # Save crops with 0-indexed naming
         input_filename = f"{self.prefix}_input_{self.crop_counter:03d}.png"
         output_filename = f"{self.prefix}_output_{self.crop_counter:03d}.png"
         
@@ -327,7 +327,7 @@ class VideoCropTool:
             if input_frame is None or output_frame is None:
                 continue
                 
-            # Save full frames
+            # Save full frames with 0-indexed naming
             input_filename = f"{self.prefix}_input_{self.crop_counter:03d}.png"
             output_filename = f"{self.prefix}_output_{self.crop_counter:03d}.png"
             

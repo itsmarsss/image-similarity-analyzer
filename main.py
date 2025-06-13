@@ -104,6 +104,9 @@ def load_batch_file(batch_file):
     """Load image pairs from a batch CSV file."""
     pairs = []
     try:
+        # Get the parent directory of the batch file
+        batch_dir = os.path.dirname(os.path.abspath(batch_file))
+        
         with open(batch_file, 'r') as f:
             reader = csv.reader(f)
             # Skip header if present
@@ -114,7 +117,8 @@ def load_batch_file(batch_file):
             else:
                 # No header, process first row as data
                 if first_row and len(first_row) >= 2:
-                    input_path, output_path = first_row[0].strip(), first_row[1].strip()
+                    input_path = os.path.join(batch_dir, first_row[0].strip())
+                    output_path = os.path.join(batch_dir, first_row[1].strip())
                     if os.path.exists(input_path) and os.path.exists(output_path):
                         pairs.append((input_path, output_path))
                     else:
@@ -129,7 +133,8 @@ def load_batch_file(batch_file):
                     print(f"Warning: Invalid format on line {line_num}: {row}")
                     continue
                     
-                input_path, output_path = row[0].strip(), row[1].strip()
+                input_path = os.path.join(batch_dir, row[0].strip())
+                output_path = os.path.join(batch_dir, row[1].strip())
                 
                 if not os.path.exists(input_path):
                     print(f"Warning: Input file not found: {input_path}")
@@ -211,8 +216,8 @@ def main():
     
     # Common options
     p.add_argument('-w', '--weights', nargs=3, type=float,
-                   default=[1.0, 2.5, 1.5],
-                   help='Weights: pixel, embedding, pose (default: body-swap optimized)')
+                   default=[1.0, 1.0, 1.0],
+                   help='Weights: pixel, embedding, pose (default: 1.0 1.0 1.0)')
     p.add_argument('--cohere-key', required=True, help='Cohere API key')
     
     # Output options
