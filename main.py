@@ -29,7 +29,7 @@ Usage Examples:
     
     # Directory scanning with custom prefix
     python main.py --directory ./images --prefix body_swap --cohere-key YOUR_KEY
-    
+
     # Disable expensive embedding analysis
     python main.py --batch pairs.csv --disable-embedding
     
@@ -404,7 +404,7 @@ def main():
               f"Embedding={'✗' if args.disable_embedding else '✓'}, "
               f"Pose={'✗' if args.disable_pose else '✓'}")
         print(f"  Rate limit delay: {args.rate_limit_delay}s")
-        print(f"Processing {len(pairs)} pairs...\n")
+    print(f"Processing {len(pairs)} pairs...\n")
     
     for i, (input_path, output_path) in enumerate(pairs, 1):
         if not args.quiet:

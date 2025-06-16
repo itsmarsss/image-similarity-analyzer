@@ -537,7 +537,7 @@ def create_interface():
             with gr.Column(scale=2):
                 auto_crop_btn = gr.Button("🚀 Auto-Crop Every Nth Frame (Full Size)", variant="primary", size="lg")
             with gr.Column(scale=2):
-                auto_crop_result = gr.Textbox(label="🤖 Auto-Crop Result", interactive=False)
+            auto_crop_result = gr.Textbox(label="🤖 Auto-Crop Result", interactive=False)
         
         with gr.Row():
             with gr.Column():
